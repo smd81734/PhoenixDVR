@@ -58,13 +58,14 @@ Phoenix is built around the open-source [Broadcom stblinux](https://github.com/B
   running tvhplayer, watch the box.
 - **The Phoenix menu and player** are what you see on the TV. The menu asks
   Tvheadend for channels, guide listings and recordings, and the player shows them
-  on screen. After a recording finishes, Phoenix makes a small index file next to
-  it, which is what makes fast-forward, rewind and scrubbing quick and accurate.
+  on screen.
 
 Your settings, recordings and guide choices live on the box's hard drive, separate
-from the Phoenix software itself, so updating Phoenix leaves them in place.  You can ignore the front-end entirely and just use Tvheadend to remotely manage, stream and schedule any show or live channel.
+from the Phoenix software itself, so updating Phoenix leaves them in place.  
+You can ignore the front-end entirely and just use Tvheadend to remotely manage, stream and schedule any show or live channel.
+If you decide you want to go back to what you had previously on the DVR, just remove the USB key and it'll reboot back to it's old self.
 
 ## Setting up a box
 
 Boxes are set up from a Windows PC with **PhoenixSetup**, the Windows installer.
-You'll need a spare USB stick an ethernet cable and your STB's remote.
+You'll need a spare USB stick, that will stay with the DVR, an ethernet cable and your STB's remote.
