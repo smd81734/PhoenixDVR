@@ -33,9 +33,8 @@ ahead. Everything is set with the remote; there is no typing.
 **Find channels automatically.** On first start, Phoenix searches the airwaves for
 the channels in your area. Nothing is preset, so it works wherever you are.
 
-**Watch on your computer.** Your recordings and channels can also be watched on a
-PC on the same home network, by opening the channel playlist in a media player
-such as VLC.
+**Watch on your computer.** Your recordings and live channels can also be watched on a
+PC using software such as [tvhplayer](https://github.com/mfat/tvhplayer) or on a mobile device using [tvhclient](http://tvhclient.com/)
 
 **Look the part.** The menus use Phoenix's own "Molten" design: a phoenix emblem
 and warm ember-to-gold colours.
