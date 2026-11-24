@@ -1,0 +1,154 @@
+{
+  "baseline_zip_sha256": "aa437be3565812bf522064b47b549599c9ab2beddcf23298f78b0e30c10dbfff",
+  "scope": "Exact upstream artifact hashes. Project builds are checked independently.",
+  "artifacts": [
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/t32.exe",
+      "sha256": "6b4195e640a85ac32eb6f9628822a622057df1e459df7c17a12f97aeabc9415b",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/t64-arm.exe",
+      "sha256": "ebc4c06b7d95e74e315419ee7e88e1d0f71e9e9477538c00a93a9ff8c66a6cfc",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/t64.exe",
+      "sha256": "81a618f21cb87db9076134e70388b6e9cb7c2106739011b6a51772d22cae06b7",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/w32.exe",
+      "sha256": "47872cc77f8e18cf642f868f23340a468e537e64521d9a3a416c8b84384d064b",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/w64-arm.exe",
+      "sha256": "c5dc9884a8f458371550e09bd396e5418bf375820a31b9899f6499bf391c7b2e",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/python3.14/ensurepip/_bundled/pip-26.2.2-py3-none-any.whl!/pip/_vendor/distlib/w64.exe",
+      "sha256": "7a319ffaba23a017d7b1e18ba726ba6c54c53d6446db55f92af53c279894f8ad",
+      "problems": [
+        "CodeView/PDB marker",
+        "PE debug directory",
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Python/pip distribution."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/bin/tvheadend",
+      "sha256": "665f38cb1b538cff166568d5950684042dfe460f5023300599ab976e87772052",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Tvheadend package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libstdc++.so.6.0.34",
+      "sha256": "8335f1f93eaf86b2d62bef62e8636202f852804415573d6c7d2c6373f17ecb8b",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/librav1e.so.0.8.1",
+      "sha256": "52c19e88ad2ac780cfa35b2fbcd338b461539e68c7de823421df5dbdebaa1154",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libgomp.so.1.0.0",
+      "sha256": "f2a57311ad6fa242dba1d3a88eab18260b10e57c040885203c40939c7a528041",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libmbedtls.so.3.6.8",
+      "sha256": "0b63d42f775debf43b226d2a12285a409c343c48254d0e3a3c8541b2e9ca5cfd",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libsrt.so.1.5.3",
+      "sha256": "0f1d0299708ee22bd4cba5cbded56d57ea2bdfa134d3c659e621582e78d19e98",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libzmq.so.5.2.5",
+      "sha256": "7a34149f6c977344521b7358662df98e3735fb6048a70976fade453fc4868634",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libdovi.so.3.3.2",
+      "sha256": "2af84723b802210ced492e2f46fd8959a67b50e4854bbdd9558d9fe0d0deefeb",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libssh.so.4.12.0",
+      "sha256": "d87d055352cacbb2e95f92244aaacb89ff22141de578a4c475be6cff5aa6a1f1",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/liburiparser.so.1.2.2",
+      "sha256": "1535c863093583cd4397759f9ef703dead515abaab4b0024aca745da632c82b0",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    },
+    {
+      "artifact_suffix": "base-rootfs.tar.gz!/./usr/lib/libvidstab.so.1.2",
+      "sha256": "f24fd248092a7fc07eddbaff9393eaa4711c5663949231a8102d89d6fd76ea09",
+      "problems": [
+        "Personal/local build path"
+      ],
+      "origin": "Upstream Alpine package."
+    }
+  ]
+}
