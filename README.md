@@ -34,11 +34,8 @@ through, Phoenix remembers the spot and offers *Resume* or *Start from beginning
 next time.
 
 **Browse the guide.** The programme guide is a grid of channels against time, two
-hours at a glance, and it scrolls about a week ahead. Channels show their logos
-where one is available, and their channel number otherwise. Guide information
-normally comes from the TV signal itself. In Settings, you can also choose an
-internet guide for your region, which often has more detail and runs further
-ahead. Everything is set with the remote; there is no typing.
+hours at a glance, and it scrolls about a week ahead. EPG Guide information
+normally comes from the over-the-air TV signal itself, you can also supplement or replace with an XML feed via the Settings page.
 
 **Find channels automatically.** On first start, Phoenix searches the airwaves for
 the channels in your area. Nothing is preset, so it works wherever you are.
@@ -51,8 +48,7 @@ and warm ember-to-gold colours.
 
 ## How it works with Tvheadend
 
-Phoenix is built around [Tvheadend](https://tvheadend.org/), a well-known open
-source TV server. Each part does the job it is best at:
+Phoenix is built around the open-source [Broadcom stblinux](https://github.com/Broadcom/stblinux) and [Tvheadend](https://tvheadend.org/) projects and has the following features:
 
 - **The tuner manager** (part of Phoenix) controls the box's four TV tuners. It
   searches for channels, then hands three of the tuners to Tvheadend and keeps
@@ -67,33 +63,9 @@ source TV server. Each part does the job it is best at:
   it, which is what makes fast-forward, rewind and scrubbing quick and accurate.
 
 Your settings, recordings and guide choices live on the box's hard drive, separate
-from the Phoenix software itself, so updating Phoenix leaves them in place.
+from the Phoenix software itself, so updating Phoenix leaves them in place.  You can ignore the front-end entirely and just use Tvheadend to remotely manage, stream and schedule any show or live channel.
 
 ## Setting up a box
 
 Boxes are set up from a Windows PC with **PhoenixSetup**, the Windows installer.
-It walks you through preparing a USB stick, installing Phoenix on the box, and
-later updating it or fixing a problem. Updates are digitally signed, so a box only
-accepts genuine Phoenix updates.
-
-Extract the whole installer ZIP before running it; the program needs the files
-that come with it. The installer is maintained as a separate project.
-
-## For developers
-
-This repository holds the software that runs on the box. To build and test it, see
-[BUILDING.md](BUILDING.md), and see [docs/DESIGN.md](docs/DESIGN.md) for how the
-pieces fit together.
-
-| Folder | What is in it |
-|---|---|
-| `source/` | The menu, player, tuner manager, startup scripts and Tvheadend setup |
-| `build/` | Scripts that compile the software for the box |
-| `dependencies/` | Lists of the outside packages the software needs |
-| `tools/` | Helpers for downloading, checking and packaging |
-| `tests/` | Tests you can run on a PC (`python tests/run-python.py`) |
-| `docs/` | Design notes |
-| `research/`, `legacy/` | Earlier experiments and older layouts, kept for reference |
-
-No passwords, keys or personal settings are stored in this repository. Each box
-keeps its own on its hard drive.
+You'll need a spare USB stick an ethernet cable and your STB's remote.
