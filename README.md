@@ -45,7 +45,7 @@ PC using software such as [tvhplayer](https://github.com/mfat/tvhplayer) or on a
 **Look the part.** The menus use Phoenix's own "Molten" design: a phoenix emblem
 and warm ember-to-gold colours.
 
-## How it works with Tvheadend
+## How it works
 
 Phoenix is built around the open-source [Broadcom stblinux](https://github.com/Broadcom/stblinux) and [Tvheadend](https://tvheadend.org/) projects and has the following features:
 
