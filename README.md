@@ -6,6 +6,16 @@ guide, and recordings you can watch, skip through and pick up where you left off
 It runs entirely on the box in your living room, with no subscription or online
 account.
 
+![The Phoenix main menu on the TV](docs/images/main-menu.png)
+
+## Screenshots
+
+| Programme guide | Windows installer |
+|---|---|
+| ![The grid programme guide](docs/images/tv-guide.png) | ![The PhoenixSetup start screen](docs/images/installer-home.png) |
+
+*Channel names and programmes in these screenshots are sample data.*
+
 ## What you can do with it
 
 **Watch live TV, and pause it.** Live TV keeps a rolling four-hour buffer on the
@@ -50,7 +60,7 @@ source TV server. Each part does the job it is best at:
 - **Tvheadend** does the "TV server" work behind the scenes: it keeps the channel
   list, gathers the programme guide, and runs scheduled recordings, saving them to
   the hard drive. It is also what lets other devices on your network, such as a PC
-  running VLC, watch the box.
+  running tvhplayer, watch the box.
 - **The Phoenix menu and player** are what you see on the TV. The menu asks
   Tvheadend for channels, guide listings and recordings, and the player shows them
   on screen. After a recording finishes, Phoenix makes a small index file next to
@@ -63,4 +73,27 @@ from the Phoenix software itself, so updating Phoenix leaves them in place.
 
 Boxes are set up from a Windows PC with **PhoenixSetup**, the Windows installer.
 It walks you through preparing a USB stick, installing Phoenix on the box, and
-later updating it or fixing a problem. U
+later updating it or fixing a problem. Updates are digitally signed, so a box only
+accepts genuine Phoenix updates.
+
+Extract the whole installer ZIP before running it; the program needs the files
+that come with it. The installer is maintained as a separate project.
+
+## For developers
+
+This repository holds the software that runs on the box. To build and test it, see
+[BUILDING.md](BUILDING.md), and see [docs/DESIGN.md](docs/DESIGN.md) for how the
+pieces fit together.
+
+| Folder | What is in it |
+|---|---|
+| `source/` | The menu, player, tuner manager, startup scripts and Tvheadend setup |
+| `build/` | Scripts that compile the software for the box |
+| `dependencies/` | Lists of the outside packages the software needs |
+| `tools/` | Helpers for downloading, checking and packaging |
+| `tests/` | Tests you can run on a PC (`python tests/run-python.py`) |
+| `docs/` | Design notes |
+| `research/`, `legacy/` | Earlier experiments and older layouts, kept for reference |
+
+No passwords, keys or personal settings are stored in this repository. Each box
+keeps its own on its hard drive.
