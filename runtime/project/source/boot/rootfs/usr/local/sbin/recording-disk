@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+target=/mnt/recording-disk
+fail() { echo "RECORDING_DISK_STOP: $*" >&2; exit 1; }
+mounted() { awk -v p="$target" '$2==p {found=1} END {exit !found}' /proc/mounts; }
+case "${1:-status}" in
+start)
+ # Match the installer-probed identity before mounting the configured target.
+ . /etc/phoenix/disk.conf || fail 'disk identity /etc/phoenix/disk.conf missing'
+ [ "$(cat /sys/class/block/sda/device/model | tr -d ' \n')" = "$DISK_MODEL" ] || fail 'unexpected model'
+ [ "$(cat /sys/class/block/sda/size)" = "$DISK_SECTORS" ] || fail 'unexpected disk size'
+ [ "$(cat /sys/class/block/sda1/size)" = "$PART_SECTORS" ] || fail 'unexpected partition size'
+ [ ! -L "$target" ] || fail 'mountpoint symlink'
+ mkdir -p "$target"
+ if ! mounted; then
+  if awk '$1=="/dev/sda1" {found=1} END {exit !found}' /proc/mounts; then fail 'partition mounted elsewhere'; fi
+  mount -t xfs -o rw,noatime /dev/sda1 "$target"
+ fi
+ awk -v p="$target" '$1=="/dev/sda1" && $2==p && $3=="xfs" && $4 ~ /(^|,)rw(,|$)/ {ok=1} END {exit !ok}' /proc/mounts || fail 'wrong mount or read-only filesystem'
+ if [ ! -f "$target/phoenix-pvr/settings/.initialized" ]; then
+  python3 -I "$target/alpine-system/data/phoenix/persistence.py" --data "$target/alpine-system/data" --disk "$target" || fail 'persistent settings initialization failed'
+ fi
+ [ ! -L "$target/phoenix-pvr" ] && [ ! -L "$target/phoenix-pvr/recordings" ] || fail 'directory symlink'
+ [ "$(cat "$target/phoenix-pvr/storage-id.txt")" = ALPINE_RECORDING_DISK_V1 ] || fail 'marker incorrect'
+ [ -d "$target/phoenix-pvr/recordings" ] || fail 'recording directory absent'
+ probe="$target/phoenix-pvr/.write-test-$$"
+ (set -C; printf 'disk check\n' > "$probe") || fail 'write test failed'
+ rm "$probe"
+ echo RECORDING_DISK_READY
+ ;;
+stop)
+ if pidof tvheadend >/dev/null; then fail 'Tvheadend still running'; fi
+ if mounted; then
+  awk -v p="$target" '$1=="/dev/sda1" && $2==p && $3=="xfs" {ok=1} END {exit !ok}' /proc/mounts || fail 'unexpected mount'
+  sync
+  umount "$target"
+ fi
+ echo RECORDING_DISK_UNMOUNTED
+ ;;
+status) grep " $target " /proc/mounts; df -h "$target";;
+*) fail 'usage: disk.sh start|stop|status';;
+esac

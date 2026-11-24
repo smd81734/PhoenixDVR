@@ -1,0 +1,36 @@
+#!/bin/bash
+# External initramfs overlay, using the stock embedded Bash and BusyBox.
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export HOME=/root TERM=vt100
+unset LD_PRELOAD LD_LIBRARY_PATH ENV BASH_ENV
+BB=/bin/busybox
+ROOT=/mnt/alpine-ram
+fail() {
+ echo "AUTOSTART STOPPED: $*"
+ echo 'Do not exit PID 1. Capture output; power-cycle normally for recovery.'
+ exec /bin/bash -i
+}
+[ "$$" = 1 ] || { echo 'Requires PID 1'; exit 1; }
+echo ALPINE_NETWORK_OVERLAY_V1
+"$BB" mount -t proc proc /proc || fail proc
+"$BB" mount -t sysfs sysfs /sys || fail sysfs
+"$BB" mount -t devtmpfs devtmpfs /dev || fail devtmpfs
+while read -r device dest fs opts rest; do
+ case "$dest:$fs" in /:rootfs|/proc:proc|/sys:sysfs|/dev:devtmpfs) : ;; *) fail "Unexpected mount $dest" ;; esac
+done < /proc/mounts
+[ ! -e "$ROOT" ] || fail 'RAM root already exists'
+"$BB" mkdir -p "$ROOT" || fail mkdir
+"$BB" mount -t tmpfs -o size=256m,mode=0755 tmpfs "$ROOT" || fail tmpfs
+(cd "$ROOT" && "$BB" tar -xzf /alpine.tar.gz) || fail extract
+"$BB" chroot "$ROOT" /bin/busybox sh -c 'test "$(cat /etc/alpine-release)" = 3.24.3' || fail release
+"$BB" mkdir -p "$ROOT/proc" "$ROOT/sys" "$ROOT/dev" "$ROOT/usr/local/bin" || fail directories
+"$ROOT/lib/ld-musl-armhf.so.1" --library-path "$ROOT/lib" "$ROOT/bin/busybox" echo ALPINE_LOADER_OK || fail loader
+cd / || fail cd
+"$BB" mount -o move /sys "$ROOT/sys" || fail move-sys
+"$BB" mount -o move /proc "$ROOT/proc" || fail move-proc
+"$BB" mount -o move /dev "$ROOT/dev" || fail move-dev
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+echo 'Entering Alpine init automatically'
+shopt -s execfail
+exec "$ROOT/lib/ld-musl-armhf.so.1" --library-path "$ROOT/lib" "$ROOT/bin/busybox" switch_root -c /dev/console "$ROOT" /sbin/init
+fail switch-root-exec

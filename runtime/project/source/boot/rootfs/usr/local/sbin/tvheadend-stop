@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+touch /run/tvheadend-stop-request
+if [ -f /run/tvh-supervisor.pid ]; then
+ p=$(cat /run/tvh-supervisor.pid)
+ case "$p" in ''|*[!0-9]*) exit 1;; esac
+ kill -TERM "$p" 2>/dev/null || :
+fi
+pids=$(pidof tvheadend || true)
+[ -z "$pids" ] || kill -TERM $pids
+n=0
+while pidof tvheadend >/dev/null || [ -f /run/tvh-supervisor.pid ]; do
+ n=$((n+1)); [ "$n" -le 30 ] || { echo 'STOP: Tvheadend shutdown incomplete; keeping storage mounted'; exit 1; }
+ sleep 1
+done
+rm -f /run/tvheadend.pid
+echo STOPPED > /run/tvheadend-status

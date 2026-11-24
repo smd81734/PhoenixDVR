@@ -1,0 +1,105 @@
+# sha256 or PRESENT  chroot-path  dependency source
+05b66b9173c42145b7c6a14180759da7e08d1bd4732ea5989705437a4bba56a9  lib/ld-linux-armhf.so.3  vendor-runtime.tar.gz
+9b67f74fb25e91c4629280d79fe25225824c7b92b23b781418226a33bab12ca5  lib/libc.so.6  vendor-runtime.tar.gz
+05a82b306b9c24afe8ced3bb9b1113f3994f9136b9a5fc71643e905820fb805a  lib/libgcc_s.so.1  vendor-runtime.tar.gz
+dcb7a2a28c212a0f322a4852c50cea124eede25db33ccbcd811894b8ba1526b6  lib/libjsonrpccpp-client.so  vendor-runtime.tar.gz
+ba66a078122d0c6a261f587453e3fea2237781199883bb2c91d00a89afd89fa5  lib/libm.so.6  vendor-runtime.tar.gz
+d6a70716be7fe8b79005193201f5b480a4106424c5b5a270e89111163c19cd95  lib/libnexus.so  vendor-runtime.tar.gz
+f48262adbc9e2c976f278de8ca6a0873b67e7134c20a10b0636fb54e27bf5c30  lib/libpthread.so.0  vendor-runtime.tar.gz
+ede65262c24d550adf8459165ccebe51e85af9bff28f8cedb7cb51c05d8d0e4b  lib/libstdc++.so.6  vendor-runtime.tar.gz
+eb122591daeb8c547448cf51c00e1242b827bbc06893949c6fe28a94421b2254  opt/blit/blit_client  blit-client.tar.gz
+05b66b9173c42145b7c6a14180759da7e08d1bd4732ea5989705437a4bba56a9  opt/blit/lib/ld-linux-armhf.so.3  blit-client.tar.gz
+bb7e5ac5d1d254282fc1d3adfce39fbfab9e76f641d8a8b3e74d6d1421ee7c98  opt/blit/lib/libBasicUsageEnvironment.so.0  blit-client.tar.gz
+85df62c94afd30af2d45a6a5ee03c1ae29a21fdd97cff3e9acfbead0170949d8  opt/blit/lib/libUsageEnvironment.so.0  blit-client.tar.gz
+60752c8d87a2b5058ca52ca5f7f63167a71aec7248b947e9dde3ef16141767b5  opt/blit/lib/libb_os.so  blit-client.tar.gz
+98ab30cfcc2690c5cce90274d90e51dfb542d79ccffcc89ab8d345650d098e13  opt/blit/lib/libb_playback_ip.so  blit-client.tar.gz
+540a44da326bb46866147ed6d83a759c5cb980836f104300b78b1258d523d598  opt/blit/lib/libbip_base.so  blit-client.tar.gz
+a7cde9cb198023222fc18ca6fb16634ea74e0690f9be9190149e5fc7e4e0a267  opt/blit/lib/libbip_client.so  blit-client.tar.gz
+7373b88d78186bc409be376682f74cd0842febdffb939ca38eb520cbb018a3ed  opt/blit/lib/libbip_server.so  blit-client.tar.gz
+9b67f74fb25e91c4629280d79fe25225824c7b92b23b781418226a33bab12ca5  opt/blit/lib/libc.so.6  blit-client.tar.gz
+a0bd7133c39680bf429064907b0746db5c525c17f168fe3242dfa377a6829d79  opt/blit/lib/libcrypto.so.1.0.0  blit-client.tar.gz
+46ec61e45bbb0798de78741a6929883d2b8e7a01d3f90ce7d392befd56c54418  opt/blit/lib/libdl.so.2  blit-client.tar.gz
+05a82b306b9c24afe8ced3bb9b1113f3994f9136b9a5fc71643e905820fb805a  opt/blit/lib/libgcc_s.so.1  blit-client.tar.gz
+742c028fcffd69d5c3af900e55ab49a14f0aedd87fb22ccaee9912d7b57e0278  opt/blit/lib/libgroupsock.so.0  blit-client.tar.gz
+0495650d81edd8d97a1bb3a14c4b93288b5881dcf92a5fd285641fa96e7358c3  opt/blit/lib/libliveMedia.so.1  blit-client.tar.gz
+ba66a078122d0c6a261f587453e3fea2237781199883bb2c91d00a89afd89fa5  opt/blit/lib/libm.so.6  blit-client.tar.gz
+d6a70716be7fe8b79005193201f5b480a4106424c5b5a270e89111163c19cd95  opt/blit/lib/libnexus.so  blit-client.tar.gz
+2601e1fb6a551b026563ab3eb339236c9eb6b2eebf2d702b5db8293b17897b60  opt/blit/lib/libnxclient.so  blit-client.tar.gz
+f48262adbc9e2c976f278de8ca6a0873b67e7134c20a10b0636fb54e27bf5c30  opt/blit/lib/libpthread.so.0  blit-client.tar.gz
+fb25f74598c3184b9257cb74720cc1f13cfc73aea01ca76fc760b4a1607c36be  opt/blit/lib/librt.so.1  blit-client.tar.gz
+6d3f9f6d395aa5700ab6c70c96c14a9a41244b6ce4531fd4abb76e532448c0df  opt/blit/lib/libssl.so.1.0.0  blit-client.tar.gz
+ede65262c24d550adf8459165ccebe51e85af9bff28f8cedb7cb51c05d8d0e4b  opt/blit/lib/libstdc++.so.6  blit-client.tar.gz
+83b4bc1d40c5e3bb679050e82023a0e75521223d19a327a5e13716586e76b57f  opt/blit/lib/libtshdrbuilder.so  blit-client.tar.gz
+05b66b9173c42145b7c6a14180759da7e08d1bd4732ea5989705437a4bba56a9  opt/playback-test/lib/ld-linux-armhf.so.3  playback-test.tar.gz
+bb7e5ac5d1d254282fc1d3adfce39fbfab9e76f641d8a8b3e74d6d1421ee7c98  opt/playback-test/lib/libBasicUsageEnvironment.so.0  playback-test.tar.gz
+85df62c94afd30af2d45a6a5ee03c1ae29a21fdd97cff3e9acfbead0170949d8  opt/playback-test/lib/libUsageEnvironment.so.0  playback-test.tar.gz
+60752c8d87a2b5058ca52ca5f7f63167a71aec7248b947e9dde3ef16141767b5  opt/playback-test/lib/libb_os.so  playback-test.tar.gz
+98ab30cfcc2690c5cce90274d90e51dfb542d79ccffcc89ab8d345650d098e13  opt/playback-test/lib/libb_playback_ip.so  playback-test.tar.gz
+540a44da326bb46866147ed6d83a759c5cb980836f104300b78b1258d523d598  opt/playback-test/lib/libbip_base.so  playback-test.tar.gz
+a7cde9cb198023222fc18ca6fb16634ea74e0690f9be9190149e5fc7e4e0a267  opt/playback-test/lib/libbip_client.so  playback-test.tar.gz
+7373b88d78186bc409be376682f74cd0842febdffb939ca38eb520cbb018a3ed  opt/playback-test/lib/libbip_server.so  playback-test.tar.gz
+9b67f74fb25e91c4629280d79fe25225824c7b92b23b781418226a33bab12ca5  opt/playback-test/lib/libc.so.6  playback-test.tar.gz
+a0bd7133c39680bf429064907b0746db5c525c17f168fe3242dfa377a6829d79  opt/playback-test/lib/libcrypto.so.1.0.0  playback-test.tar.gz
+46ec61e45bbb0798de78741a6929883d2b8e7a01d3f90ce7d392befd56c54418  opt/playback-test/lib/libdl.so.2  playback-test.tar.gz
+05a82b306b9c24afe8ced3bb9b1113f3994f9136b9a5fc71643e905820fb805a  opt/playback-test/lib/libgcc_s.so.1  playback-test.tar.gz
+742c028fcffd69d5c3af900e55ab49a14f0aedd87fb22ccaee9912d7b57e0278  opt/playback-test/lib/libgroupsock.so.0  playback-test.tar.gz
+0495650d81edd8d97a1bb3a14c4b93288b5881dcf92a5fd285641fa96e7358c3  opt/playback-test/lib/libliveMedia.so.1  playback-test.tar.gz
+ba66a078122d0c6a261f587453e3fea2237781199883bb2c91d00a89afd89fa5  opt/playback-test/lib/libm.so.6  playback-test.tar.gz
+d6a70716be7fe8b79005193201f5b480a4106424c5b5a270e89111163c19cd95  opt/playback-test/lib/libnexus.so  playback-test.tar.gz
+2601e1fb6a551b026563ab3eb339236c9eb6b2eebf2d702b5db8293b17897b60  opt/playback-test/lib/libnxclient.so  playback-test.tar.gz
+f48262adbc9e2c976f278de8ca6a0873b67e7134c20a10b0636fb54e27bf5c30  opt/playback-test/lib/libpthread.so.0  playback-test.tar.gz
+fb25f74598c3184b9257cb74720cc1f13cfc73aea01ca76fc760b4a1607c36be  opt/playback-test/lib/librt.so.1  playback-test.tar.gz
+6d3f9f6d395aa5700ab6c70c96c14a9a41244b6ce4531fd4abb76e532448c0df  opt/playback-test/lib/libssl.so.1.0.0  playback-test.tar.gz
+ede65262c24d550adf8459165ccebe51e85af9bff28f8cedb7cb51c05d8d0e4b  opt/playback-test/lib/libstdc++.so.6  playback-test.tar.gz
+83b4bc1d40c5e3bb679050e82023a0e75521223d19a327a5e13716586e76b57f  opt/playback-test/lib/libtshdrbuilder.so  playback-test.tar.gz
+f2da7c116dbc368eab02b1e92af4deb82055ecedc08d5b3db7e65c37c9e53d44  opt/playback-test/play  playback-test.tar.gz
+05b66b9173c42145b7c6a14180759da7e08d1bd4732ea5989705437a4bba56a9  opt/tuner-libs/ld-linux-armhf.so.3  tuner-libs.tar.gz
+be3b37f2a02417f7bee947a5fae0adc0d6992c031a3d4b2e75bc6b08735f7166  opt/tuner-libs/libadpcm.so  tuner-libs.tar.gz
+2d28e4a66634190e2869791dd8a495693d38bf1215d632dd6d54940113742dbc  opt/tuner-libs/libasound.so.2  tuner-libs.tar.gz
+8555c697a19a6711a38df5f5dc68cfe749bc835a092ab8eb6d485e25b6953e75  opt/tuner-libs/libbsa.so  tuner-libs.tar.gz
+9b67f74fb25e91c4629280d79fe25225824c7b92b23b781418226a33bab12ca5  opt/tuner-libs/libc.so.6  tuner-libs.tar.gz
+46ec61e45bbb0798de78741a6929883d2b8e7a01d3f90ce7d392befd56c54418  opt/tuner-libs/libdl.so.2  tuner-libs.tar.gz
+e5a738f8aa65c69881e256e71b1b721d8e1ff0c45ea65a8971e331bffaaab9aa  opt/tuner-libs/libfreetype.so.6  tuner-libs.tar.gz
+05a82b306b9c24afe8ced3bb9b1113f3994f9136b9a5fc71643e905820fb805a  opt/tuner-libs/libgcc_s.so.1  tuner-libs.tar.gz
+a7391b749c94ee1a3a8f800efab4816064b51989451318caa17356e6ed80a687  opt/tuner-libs/libjson.so.0  tuner-libs.tar.gz
+ba66a078122d0c6a261f587453e3fea2237781199883bb2c91d00a89afd89fa5  opt/tuner-libs/libm.so.6  tuner-libs.tar.gz
+d6a70716be7fe8b79005193201f5b480a4106424c5b5a270e89111163c19cd95  opt/tuner-libs/libnexus.so  tuner-libs.tar.gz
+2601e1fb6a551b026563ab3eb339236c9eb6b2eebf2d702b5db8293b17897b60  opt/tuner-libs/libnxclient.so  tuner-libs.tar.gz
+8390139bc2ff41421eb5c6de73e1944bd0a503bbf49af534f0a71f767cc3304d  opt/tuner-libs/libpng16.so.16  tuner-libs.tar.gz
+c15dad4874b1a7ca0565812bb91d0c97d67c4816b08af88dd545815a272b3b30  opt/tuner-libs/libpolar_scbt.so  tuner-libs.tar.gz
+b94c9d9d6085b6ff280ae73995c73b298f5838021717a63066cefda610f18070  opt/tuner-libs/libpopt.so.0  tuner-libs.tar.gz
+f48262adbc9e2c976f278de8ca6a0873b67e7134c20a10b0636fb54e27bf5c30  opt/tuner-libs/libpthread.so.0  tuner-libs.tar.gz
+fb25f74598c3184b9257cb74720cc1f13cfc73aea01ca76fc760b4a1607c36be  opt/tuner-libs/librt.so.1  tuner-libs.tar.gz
+dff8d56857982f89496526b99f851029a330a4e2d7b78c34d62ae9d3d8935221  opt/tuner-libs/libsqlite3.so.0  tuner-libs.tar.gz
+fa0d6881c4b7a8c32d5b16e5144d4cdf88fae7db17cf60227dfebf91bd6491c7  opt/tuner-libs/libsrai.so  tuner-libs.tar.gz
+ede65262c24d550adf8459165ccebe51e85af9bff28f8cedb7cb51c05d8d0e4b  opt/tuner-libs/libstdc++.so.6  tuner-libs.tar.gz
+5720dab281d4bf3cf04ab8db2098e3a57fa6ee7796ebfc20d29acdc12fdfaeea  opt/tuner-libs/libz.so.1  tuner-libs.tar.gz
+15d69fc36a900893680602779e1d906f292c7887c310e81f5e66088b6ee60197  opt/tuner-libs/libzebra.so  tuner-libs.tar.gz
+d4c493ed3dd15a771d032b7b7647bad1552a6ce2764899a4e01304ab59651382  usr/local/bin/nxserver/SDL_TA_verimatrix_ultra.bin  vendor-firmware.tar.gz
+9bdbaf1b45c2a0655c6b42e9b1ce55b54b970641cc5fb0599d3ce09dc8e90d71  usr/local/bin/nxserver/nxserver  vendor-runtime.tar.gz
+6b8cf4a04606bf7fb1bbde56bd245ea680de8f1985061e5c1a48e5b846503420  usr/local/bin/nxserver/sage_bl.bin  vendor-firmware.tar.gz
+f601fd5db9b91034c46be8009f0a4d66ab6b6cce9c36d45fd3deafebbcea3d19  usr/local/bin/nxserver/sage_framework.bin  vendor-firmware.tar.gz
+a2f785543bf9cea0f3acb53175f947fc7875d281e56c0ee6dc624670a54944c3  usr/local/bin/nxserver/sage_ta_antirollback.bin  vendor-firmware.tar.gz
+ef5f370f0e9a92124615feb6b53414c87e638d87b35c002107d49651989a04cc  usr/local/bin/nxserver/sage_ta_bp3.bin  vendor-firmware.tar.gz
+e3a94dabc185499cc62fdb4626e3e23caf42d9d12459c50bc89a3caab2d7d714  usr/local/bin/nxserver/sage_ta_hdcp22.bin  vendor-firmware.tar.gz
+3ae267392da9bb579c1651036407176fe02cde1c21a7939ab5ebc5c9fc24e32d  usr/local/bin/nxserver/sage_ta_manufacturing.bin  vendor-firmware.tar.gz
+76ece741dbc1dca0a07ab5e9c8db72a3b5461a1bea357ccef23c77f040f59870  usr/local/bin/nxserver/sage_ta_netflix.bin  vendor-firmware.tar.gz
+6158d1fa321eb2b44edb9e256a8f9718936b4fdf1c8bdd979c7c666f5f18f684  usr/local/bin/nxserver/sage_ta_playready_25.bin  vendor-firmware.tar.gz
+8be64fbd9b1dd2f3974a2ad19bf0eafca0d654b1d73377018c4c1efdd311e86d  usr/local/bin/nxserver/sage_ta_playready_30.bin  vendor-firmware.tar.gz
+10550d5cf900055c850705edae39b7a0ddb627e1d7f590146016e247b49b04fb  usr/local/bin/nxserver/sage_ta_secure_video.bin  vendor-firmware.tar.gz
+e1d116fa56f584528482175adc1254ce49aedb8ebec41ae010f2d7fbbaa58f31  usr/local/bin/nxserver/sage_ta_utility.bin  vendor-firmware.tar.gz
+880bb8ae8c55e22e427aecdbf98222d16ab604dc851f6e371695625b637b2b6e  usr/local/bin/nxserver/sage_ta_widevine.bin  vendor-firmware.tar.gz
+d4c493ed3dd15a771d032b7b7647bad1552a6ce2764899a4e01304ab59651382  SDL_TA_verimatrix_ultra.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+6b8cf4a04606bf7fb1bbde56bd245ea680de8f1985061e5c1a48e5b846503420  sage_bl.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+f601fd5db9b91034c46be8009f0a4d66ab6b6cce9c36d45fd3deafebbcea3d19  sage_framework.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+a2f785543bf9cea0f3acb53175f947fc7875d281e56c0ee6dc624670a54944c3  sage_ta_antirollback.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+ef5f370f0e9a92124615feb6b53414c87e638d87b35c002107d49651989a04cc  sage_ta_bp3.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+e3a94dabc185499cc62fdb4626e3e23caf42d9d12459c50bc89a3caab2d7d714  sage_ta_hdcp22.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+3ae267392da9bb579c1651036407176fe02cde1c21a7939ab5ebc5c9fc24e32d  sage_ta_manufacturing.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+76ece741dbc1dca0a07ab5e9c8db72a3b5461a1bea357ccef23c77f040f59870  sage_ta_netflix.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+6158d1fa321eb2b44edb9e256a8f9718936b4fdf1c8bdd979c7c666f5f18f684  sage_ta_playready_25.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+8be64fbd9b1dd2f3974a2ad19bf0eafca0d654b1d73377018c4c1efdd311e86d  sage_ta_playready_30.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+10550d5cf900055c850705edae39b7a0ddb627e1d7f590146016e247b49b04fb  sage_ta_secure_video.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+e1d116fa56f584528482175adc1254ce49aedb8ebec41ae010f2d7fbbaa58f31  sage_ta_utility.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+880bb8ae8c55e22e427aecdbf98222d16ab604dc851f6e371695625b637b2b6e  sage_ta_widevine.bin  vendor-firmware.tar.gz (copy at chroot root, as on the DVR)
+PRESENT  home/hybroad/share/.DTV_frontend_config.cfg  Required target tuner configuration; contents may vary by device

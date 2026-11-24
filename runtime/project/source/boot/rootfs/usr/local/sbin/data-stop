@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+cd /
+touch /run/nexus-tuner-shutdown /run/tvheadend-stop-request
+# Finish/cancel the explicit setup job before stopping tuners or unmounting its log.
+[ ! -f /data/phoenix/tvheadend/setup.py ] || python3 -I /data/phoenix/tvheadend/setup.py stop || exit 1
+[ ! -f /data/native-frontend/html-control.sh ] || /bin/sh /data/native-frontend/html-control.sh stop || exit 1
+[ ! -f /data/native-frontend/control.sh ] || /bin/sh /data/native-frontend/control.sh stop || exit 1
+/usr/local/sbin/tvheadend-stop || exit 1
+/bin/sh /data/nexus-tuner-manager/control.sh stop || exit 1
+/usr/local/sbin/nexus-display-stop || exit 1
+/usr/local/sbin/phoenix-time save >> /var/log/network-time.log 2>&1 || :
+sync
+if awk '$2=="/data" {ok=1} END {exit !ok}' /proc/mounts; then umount /data; fi
+/usr/local/sbin/recording-disk stop
+echo DATA_UNMOUNTED > /run/alpine-data-status

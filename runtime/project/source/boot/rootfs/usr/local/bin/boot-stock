@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+cd /
+/usr/local/sbin/recording-disk start
+request=/mnt/recording-disk/alpine-system/boot/stock-once.txt
+[ "$(cat /mnt/recording-disk/alpine-system/storage-id.txt)" = ALPINE_HDD_SYSTEM_V1 ]
+[ ! -L "$request" ] && [ ! -e "$request" ]
+(set -C; printf 'STOCK_ONCE_V1\n' > "$request")
+sync
+if ! /usr/local/sbin/data-stop; then
+ if grep -q ' /mnt/recording-disk ' /proc/mounts; then rm -f "$request"; sync; fi
+ echo 'STOP: cleanup failed; reboot cancelled'; exit 1
+fi
+/sbin/reboot

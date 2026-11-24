@@ -1,0 +1,18 @@
+Welcome to Phoenix!
+
+Logs are available here:
+  Setup:     /mnt/recording-disk/phoenix-pvr/settings/firstboot.log
+  Frontend:  /data/native-frontend/html-frontend.log
+  Browser:   /data/native-frontend/chromium.log
+  Tuners:    /data/nexus-tuner-manager/service.log
+  TVHeadend: /mnt/recording-disk/phoenix-pvr/diagnostics/tvh/service.log
+  HDMI:      /var/log/nexus-display.log
+  Storage:   /var/log/alpine-data.log
+  Network:   /var/log/udhcpc.log
+
+To cleanly shut down the box, use:
+  cd /root && /usr/local/sbin/data-stop && sync && /sbin/poweroff -f
+
+To access the web portal, open your browser to:
+  http://@DEVICE_IP@:9981
+

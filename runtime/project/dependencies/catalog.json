@@ -1,0 +1,99 @@
+{
+  "format": 1,
+  "downloads": {
+    "alpine": {
+      "version": "3.24.3",
+      "arch": "armv7",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/armv7/alpine-minirootfs-3.24.3-armv7.tar.gz",
+      "sha256": "dc1ddfaf03ede4be79ad7475490f6b7859dbcbbbbb85150aa1ee013b4bc2f0c1",
+      "status": "Pinned public minirootfs input."
+    },
+    "alpine_packages": {
+      "required": [
+        "dropbear",
+        "tvheadend",
+        "python3",
+        "tzdata",
+        "ca-certificates-bundle"
+      ],
+      "observed_versions": [
+        "ca-certificates-bundle-20261020-r0",
+        "dropbear-2026.91-r0",
+        "python3-3.14.10-r1",
+        "tvheadend-4.3_git20260214-r1",
+        "tzdata-2026f-r0"
+      ],
+      "repositories": [
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/community"
+      ],
+      "status": "Signed public packages; exact versions depend on repository availability.",
+      "resolved": "dependencies/resolved-rootfs-packages.txt"
+    },
+    "fonts": [
+      {
+        "name": "Texta-Bold.ttf",
+        "sha256": "64f0a381741f8e59e1ae261ecadfc8e8a1c16082dd3765dadacdfbc0755cf7aa"
+      },
+      {
+        "name": "Texta-Light.ttf",
+        "sha256": "056bbe31b3320716bcf54418e45b56bd94855b6145e07044018d56646ce21e61"
+      },
+      {
+        "name": "Texta-Medium.ttf",
+        "sha256": "a9bd95efa283b5170d600c449315eb201fe3c486037aaf06b723581d5f0cc964"
+      }
+    ],
+    "channel_icons": {
+      "mapping": "dependencies/channel-icons.tsv",
+      "status": "Pinned public colour PNG dependency; kept outside our source tree",
+      "url": "https://codeload.github.com/mathewcallaghan/australian-tv-network-logo-icons/zip/ac0b0aae8a782ec96bbf1818adb23291e5134f30",
+      "revision": "ac0b0aae8a782ec96bbf1818adb23291e5134f30",
+      "sha256": "e11aa1d77b78d35d6c9bcefd68dd32a706c9ae44e14bc63a7a2f50d745538844",
+      "directory": "australian-tv-network-logo-icons-master",
+      "colour_path": "/mnt/recording-disk/network-icons/australian-tv-network-logo-icons-master/colour",
+      "payload_sha256": "df8623f79f4e7b7e916f306177251294b95ed75135f169c568373ac1aad98b5a"
+    }
+  },
+  "target_firmware": {
+    "manifest": "dependencies/vendor-files.sha256",
+    "kernel_release": "4.1.20-1.9",
+    "module_sha256": "c77847145fcffb8ff8ed6e1b3d0e14b6ffe2343f0206b848e1b60b40983d8f15",
+    "components": [
+      "Matching nexus.ko",
+      "NEXUS/glibc loader and libraries",
+      "nxserver and firmware",
+      "Stock play",
+      "Stock Chromium and its resources/IR maps",
+      "Original blit_client, patched by our Python recipe",
+      "Tuner frontend configuration"
+    ],
+    "status": "Harvest from this target device; firmware slots and hashes must be validated; no blobs shipped in source tree",
+    "generated_runtime_identity": "NEXUS_RUNTIME_V1; generated locally, not harvested",
+    "browser_manifest": "dependencies/browser-files.sha256",
+    "remote_maps_directory_required": true
+  },
+  "build": {
+    "delivery": "Precompiled custom C binaries in later USB payload",
+    "target": "ARMv7 hard-float, preserved vendor glibc 2.18 ABI, 32-bit time",
+    "outputs": [
+      "tuner-manager",
+      "mkindex",
+      "phoenix-player",
+      "player-controls.so",
+      "player-status.so",
+      "player-livefile.so"
+    ],
+    "toolchain": "Compatible glibc-target ARM compiler on build host; preserve existing ABI flags",
+    "native_alpine_compile": "Deferred; not required for first USB installer"
+  },
+  "tuning": {
+    "discovery": "On-device band sweep and broadcast PAT/PMT; no compiled regional profiles",
+    "plans": [
+      "au",
+      "eu"
+    ],
+    "capacity_gate": "All discovered muxes must pass before the checksum-bound playlist is exposed",
+    "hardware_validation": "Device-specific RF and tuner-capacity validation required."
+  }
+}

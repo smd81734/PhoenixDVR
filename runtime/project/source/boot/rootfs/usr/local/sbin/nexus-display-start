@@ -1,0 +1,71 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+unset LD_PRELOAD LD_LIBRARY_PATH
+root=/data/nexus-loader-test-v1
+state=/run/nexus-display.pid
+[ "$(cat /etc/boot-policy)" = PRIMARY_ONCE_V1 ] || exit 1
+[ "$(uname -r)" = 4.1.20-1.9 ] || exit 1
+case "$(cat /proc/cmdline)" in *initrd=*) echo 'STOP: external initramfs boot'; exit 1;; esac
+case "$(cat /proc/cmdline)" in *'bmem=768m@1279m bmem=970m@2099m'*) ;; *) echo 'STOP: memory settings differ'; exit 1;; esac
+[ "$(cat /run/alpine-data-status)" = DATA_MOUNTED_RW ] || exit 1
+[ "$(cat "$root/runtime-id.txt")" = NEXUS_RUNTIME_V1 ] || exit 1
+for f in /proc/[0-9]*/cmdline; do
+ if tr '\000' '\n' < "$f" 2>/dev/null | grep -F -x /usr/local/bin/nxserver/nxserver >/dev/null; then
+  echo 'STOP: nxserver already running'; exit 1
+ fi
+done
+[ ! -e "$state" ] || { echo 'STOP: existing PID file'; exit 1; }
+[ ! -e /run/nexus-display-attempted ] || { echo 'STOP: reboot before retrying hardware initialization'; exit 1; }
+check() {
+ [ -f "$1" ] || { echo "Required dependency missing: $1"; exit 1; }
+ if [ "$(cat /etc/phoenix/firmware-policy 2>/dev/null)" = RELAXED_VENDOR_HASHES_V1 ]; then
+  echo "Firmware SHA override accepted: $1"
+  return 0
+ fi
+ actual=$(md5sum "$1"); [ "${actual%% *}" = "$2" ] || { echo "Fingerprint mismatch: $1"; exit 1; }
+}
+check "$root/usr/local/bin/nxserver/nxserver" e589d4cc9c098e48a7c62df4aa106cd1
+check "$root/lib/libnexus.so" a7f3e36e4ee1372cb283d9e671f9c8fd
+if grep -E '^nexus ' /proc/modules >/dev/null; then
+ echo 'STOP: module already loaded; use a clean boot'; exit 1
+fi
+module=/mnt/recording-disk/alpine-system/modules/nexus.ko
+check "$module" 11eb1c2850aa30c1706b3cc16b79dece
+cp "$module" /tmp/nexus-display.ko
+cmp "$module" /tmp/nexus-display.ko
+check /tmp/nexus-display.ko 11eb1c2850aa30c1706b3cc16b79dece
+mkdir -p /var/log
+sync
+touch /run/nexus-display-attempted
+insmod /tmp/nexus-display.ko 'config=B_REFSW_BOXMODE=2'
+# This stock driver registers a major but does not publish a devtmpfs node.
+# Discover its registered ABI rather than depending on a previous installation.
+major=$(awk '$2=="nexus" && NF==2 {print $1}' /proc/devices)
+case "$major" in ''|*[!0-9]*) echo NEXUS_DRIVER_NOT_REGISTERED; exit 1;; esac
+mkdir -p "$root/dev"
+if [ -e "$root/dev/nexus" ] || [ -L "$root/dev/nexus" ]; then
+ [ -c "$root/dev/nexus" ] && [ ! -L "$root/dev/nexus" ] || { echo NEXUS_DEVICE_INVALID; exit 1; }
+ [ "$(stat -c '%t:%T' "$root/dev/nexus")" = "$(printf '%x:0' "$major")" ] || { echo NEXUS_DEVICE_ABI_MISMATCH; exit 1; }
+else
+ mknod "$root/dev/nexus" c "$major" 0
+fi
+chmod 600 "$root/dev/nexus"
+# A fresh boot has no live socket from this service. Remove only its stale inode.
+[ ! -S "$root/tmp/nxserver_ipc" ] || rm "$root/tmp/nxserver_ipc"
+cd /
+B_REFSW_BOXMODE=2 chroot "$root" /lib/ld-linux-armhf.so.3 --library-path /lib /usr/local/bin/nxserver/nxserver \
+ -sd off -frontend off -avc51 -hdcp_version follow \
+ -memconfig videoDecoder,0,4096,2160 -memconfig display,0,4096,2160 \
+ -svp_urr -persistent_sad -ms12 -heap export,4M -heap video_secure,140M \
+ -heap gfx,500M -spd Phoenix,Phoenix_PVR -fbsize 1920,1080 \
+ -display_format 1080p50 -dropFrame disable -ignore_video_edid \
+ </dev/null >/var/log/nexus-display.log 2>&1 &
+pid=$!
+printf '%s\n' "$pid" > "$state"
+sleep 15
+kill -0 "$pid" 2>/dev/null || { echo 'NEXUS_SERVER_EXITED'; tail -n 60 /var/log/nexus-display.log; exit 1; }
+[ -S "$root/tmp/nxserver_ipc" ] || { echo 'NEXUS_SOCKET_MISSING'; exit 1; }
+echo NEXUS_DISPLAY_SERVER_RUNNING
+echo "PID=$pid"
+echo 'Socket present; verify HDMI with the known graphics test.'

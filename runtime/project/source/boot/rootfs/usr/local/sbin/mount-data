@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+mkdir -p /run /data
+echo DATA_NOT_MOUNTED > /run/alpine-data-status
+/usr/local/sbin/recording-disk start
+src=/mnt/recording-disk/alpine-system/data
+[ "$(cat /mnt/recording-disk/alpine-system/storage-id.txt)" = ALPINE_HDD_SYSTEM_V1 ]
+[ ! -L "$src" ] && [ -d "$src" ]
+[ "$(cat "$src/persistence-test.txt")" = ALPINE_PERSISTENCE_V1 ]
+! awk '$2=="/data" {found=1} END {exit !found}' /proc/mounts
+mount -o bind "$src" /data
+echo DATA_MOUNTED_RW > /run/alpine-data-status

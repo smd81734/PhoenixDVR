@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Refresh only installer-managed LAN access, offline or through the live API."""
+import argparse
+import importlib.util
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+CONFIG = Path('/mnt/recording-disk/phoenix-pvr/tvheadend/config')
+IDENTITY = Path('/mnt/recording-disk/phoenix-pvr/settings/frontend.json')
+COMMENT = 'phoenix automatic LAN'
+
+
+def prefix(addresses):
+    networks = []
+    for value in re.findall(r'\binet\s+(\S+)', addresses):
+        address = ipaddress.ip_interface(value)
+        if address.version != 4 or address.ip.is_loopback or address.ip.is_link_local or address.ip.is_unspecified:
+            continue
+        # Refuse accidental all-address access, even with a malformed lease.
+        if address.network.prefixlen == 0:
+            continue
+        network = str(address.network)
+        if network not in networks:
+            networks.append(network)
+    return ','.join(['127.0.0.1/32'] + networks)
+
+
+def managed(row):
+    return row.get('comment') == COMMENT and row.get('username') not in (None, '', '*')
+
+
+def offline(config, allowed):
+    for path in (config/'accesscontrol').iterdir():
+        if not path.is_file() or path.is_symlink() or path.name.endswith('.lan-new'):
+            continue
+        row = json.loads(path.read_text())
+        if managed(row) and row.get('prefix') != allowed:
+            row['prefix'] = allowed
+            temporary = path.with_name(path.name+'.lan-new')
+            with temporary.open('w', encoding='utf-8', newline='\n') as stream:
+                os.chmod(temporary, 0o600)
+                stream.write(json.dumps(row)+'\n')
+            temporary.replace(path)
+
+
+def live(api, allowed):
+    for row in api.grid('access/entry/grid'):
+        if managed(row) and row.get('prefix') != allowed:
+            api.call('idnode/save', node={'uuid': row['uuid'], 'prefix': allowed})
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--live', action='store_true')
+    args = parser.parse_args()
+    addresses = subprocess.check_output(['ip', '-4', '-o', 'addr', 'show', 'dev', 'eth0'], text=True)
+    allowed = prefix(addresses)
+    if args.live:
+        spec = importlib.util.spec_from_file_location('tvh_setup', '/data/phoenix/tvheadend/setup.py')
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        identity = json.loads(IDENTITY.read_text())
+        api = setup.API('http://127.0.0.1:9981', identity['username'], identity['password'])
+        api.wait(tries=5)
+        live(api, allowed)
+    else:
+        if subprocess.run(['pidof', 'tvheadend'], stdout=subprocess.DEVNULL).returncode == 0:
+            raise RuntimeError('Offline LAN update requires Tvheadend stopped')
+        offline(CONFIG, allowed)
+    print('TVHEADEND_LAN_PREFIX', allowed, flush=True)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,47 @@
+#!/bin/bash
+# Always run from RAM as PID1. Never execute a script held open on the HDD.
+BB=/bin/busybox
+[ "$$" = 1 ] || exit 1
+shopt -s execfail
+recover() {
+ trap - EXIT
+ echo 'HDD_BOOT_STOPPED: recovery shell; do not exit PID1'
+ exec /bin/bash -i
+ while :; do "$BB" sleep 60; done
+}
+trap recover EXIT
+disk=/mnt/hdd-boot
+"$BB" mount -t proc proc /proc || recover
+"$BB" mount -t sysfs sysfs /sys || recover
+"$BB" mount -t devtmpfs devtmpfs /dev || recover
+"$BB" mkdir -p "$disk" || recover
+n=0
+while [ ! -b /dev/sda1 ]; do
+ n=$((n+1)); [ "$n" -lt 30 ] || recover
+ "$BB" sleep 1
+done
+[ "$("$BB" cat /sys/class/block/sda/size)" = @DISK_SECTORS@ ] || recover
+[ "$("$BB" cat /sys/class/block/sda1/size)" = @PART_SECTORS@ ] || recover
+"$BB" mount -t xfs -o rw,noatime /dev/sda1 "$disk" || recover
+[ "$("$BB" cat "$disk/alpine-system/storage-id.txt")" = ALPINE_HDD_SYSTEM_V1 ] || recover
+src="$disk/alpine-system/boot"
+stock=0
+if [ -e "$src/stock-once.txt" ]; then
+ [ "$("$BB" cat "$src/stock-once.txt")" = STOCK_ONCE_V1 ] || recover
+ "$BB" rm "$src/stock-once.txt" || recover
+ "$BB" sync
+ stock=1
+else
+ "$BB" cp "$src/alpine.tar.gz" /alpine.tar.gz || recover
+ "$BB" cp "$src/alpine-init" /alpine-init || recover
+ "$BB" cmp "$src/alpine.tar.gz" /alpine.tar.gz || recover
+ "$BB" cmp "$src/alpine-init" /alpine-init || recover
+ # SHA256 is also checked during staging; cmp verifies the RAM copies.
+fi
+cd / || recover
+"$BB" umount "$disk" || recover
+"$BB" umount /dev || recover
+"$BB" umount /sys || recover
+"$BB" umount /proc || recover
+if [ "$stock" = 1 ]; then exec /sbin/init; else exec /bin/bash /alpine-init; fi
+recover

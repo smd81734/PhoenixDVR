@@ -1,0 +1,23 @@
+{
+  "project": "Phoenix Windows Device Setup",
+  "version": "0.2.1-preview21",
+  "implementation": "C# WinForms / .NET Framework; Python and shell target bootstrap",
+  "usb_protocol_version": 5,
+  "firmware_slots": [
+    0,
+    1
+  ],
+  "persistent_usb_required": true,
+  "default_target_sha_policy": "strict",
+  "explicit_target_sha_override": true,
+  "release_debug_generation": false,
+  "runtime_input_archive": "inputs/installer.zip",
+  "runtime_asset_directory": "inputs/runtime/usb-payload/phoenix",
+  "source_bundle": {
+    "runtime_images_included": false,
+    "compiled_binaries_included": false,
+    "local_reports_included": false,
+    "paths": "relative to the source archive root"
+  },
+  "new_hardware_validation": "pending"
+}

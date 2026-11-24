@@ -1,0 +1,162 @@
+#!/usr/bin/python3
+"""Recover UTC without making service startup depend on an internet connection."""
+import argparse
+from pathlib import Path
+import re
+import subprocess
+import time
+import urllib.request
+
+SETTINGS = Path('/mnt/recording-disk/phoenix-pvr/settings')
+STOP = Path('/run/nexus-tuner-shutdown')
+STATUS = Path('/run/phoenix-time-status')
+MIN_TIME = 1767225600  # 2026-01-01 UTC
+MAX_TIME = 2145916800  # Keep the vendor time32 runtime below 2038.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def valid(value):
+    return MIN_TIME <= value < MAX_TIME
+
+
+def run(args, timeout=5):
+    try:
+        return subprocess.run(args, timeout=timeout, check=False).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def status(message):
+    STATUS.write_text(message+'\n')
+    print('CLOCK_'+message, flush=True)
+
+
+def save():
+    now = int(time.time())
+    if valid(now) and SETTINGS.is_dir():
+        target = SETTINGS/'last-time'
+        temporary = SETTINGS/'last-time.new'
+        temporary.write_text(str(now)+'\n')
+        temporary.replace(target)
+        # Some kernels expose no RTC, or an RTC without power-off retention.
+        if not run(['/bin/busybox', 'hwclock', '-w', '-u']):
+            print('CLOCK_RTC_WRITE_UNAVAILABLE', flush=True)
+
+
+def restore():
+    if not valid(time.time()):
+        run(['/bin/busybox', 'hwclock', '-s', '-u'])
+    try:
+        saved = int((SETTINGS/'last-time').read_text())
+        if valid(saved) and time.time() < saved:
+            time.clock_settime(time.CLOCK_REALTIME, saved)
+    except (OSError, ValueError):
+        pass
+    status('RESTORED_APPROXIMATE' if valid(time.time()) else 'UNSET')
+
+
+def servers():
+    try:
+        lines = (SETTINGS/'ntp-servers').read_text().splitlines()
+    except FileNotFoundError:
+        return ['pool.ntp.org']
+    # An empty file disables NTP. Pass hosts as arguments, never shell input.
+    return [s for line in lines if (s := line.split('#', 1)[0].strip())
+            and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.:_-]{0,252}', s)][:8]
+
+
+def decode_tdt(packet):
+    """TDT UTC fits in one TS packet; reject damaged/invalid headers and BCD."""
+    if len(packet) != 188 or packet[0] != 0x47 or packet[1] & 0x80:
+        return None
+    if ((packet[1] & 31) << 8 | packet[2]) != 20 or not packet[1] & 0x40:
+        return None
+    if packet[3] & 0xc0 or not packet[3] & 0x10:
+        return None
+    at = 4
+    if packet[3] & 0x20:
+        at += 1+packet[4]
+    if at >= 188:
+        return None
+    at += 1+packet[at]
+    if at+8 > 188 or packet[at:at+3] != b'\x70\x70\x05':
+        return None
+    utc = packet[at+3:at+8]
+    digits = [(v >> 4, v & 15) for v in utc[2:]]
+    if any(a > 9 or b > 9 for a, b in digits):
+        return None
+    hour, minute, second = [a*10+b for a, b in digits]
+    if hour > 23 or minute > 59 or second > 59:
+        return None
+    epoch = (int.from_bytes(utc[:2], 'big')-40587)*86400+hour*3600+minute*60+second
+    return epoch if valid(epoch) else None
+
+
+def broadcast():
+    # Use only local manager-generated URLs. HTTP failure/busy tuners are retryable.
+    with OPENER.open('http://127.0.0.1:9990/muxes.m3u', timeout=3) as response:
+        playlist = response.read(65536).decode()
+    urls = [line for line in playlist.splitlines()
+            if re.fullmatch(r'http://127\.0\.0\.1:9990/mux/[0-9]+/[678]', line)]
+    for url in urls[:3]:
+        if STOP.exists():
+            return None
+        try:
+            with OPENER.open(url, timeout=8) as stream:
+                deadline = time.monotonic()+35
+                pending = b''
+                while time.monotonic() < deadline and not STOP.exists():
+                    block = stream.read(188*7)
+                    if not block:
+                        break
+                    pending += block
+                    while len(pending) >= 188:
+                        if pending[0] != 0x47:
+                            pending = pending[1:]
+                            continue
+                        value = decode_tdt(pending[:188])
+                        pending = pending[188:]
+                        if value is not None:
+                            return value
+        except OSError:
+            continue
+    return None
+
+
+def daemon():
+    while not STOP.exists():
+        peers = servers()
+        command = ['/bin/busybox', 'ntpd', '-n', '-q']
+        for peer in peers:
+            command.extend(['-p', peer])
+        synced = bool(peers) and run(command, timeout=20) and valid(time.time())
+        if not synced:
+            try:
+                value = broadcast()
+                if value is not None and not STOP.exists():
+                    time.clock_settime(time.CLOCK_REALTIME, value)
+                    status('BROADCAST')
+                    synced = True
+            except (OSError, ValueError) as error:
+                print('CLOCK_BROADCAST_PENDING '+str(error), flush=True)
+        elif not STOP.exists():
+            status('NTP')
+        if STOP.exists():
+            break
+        if synced:
+            try:
+                save()
+            except OSError as error:
+                print('CLOCK_SAVE_FAILED '+str(error), flush=True)
+        else:
+            status('APPROXIMATE' if valid(time.time()) else 'UNSET')
+        for _ in range(600 if synced else 30):
+            if STOP.exists():
+                return
+            time.sleep(1)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('restore', 'save', 'daemon'))
+    globals()[parser.parse_args().action]()

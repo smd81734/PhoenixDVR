@@ -1,0 +1,39 @@
+#!/bin/sh
+# Boot hook (installed in the boot image as /usr/local/sbin/ui-autostart).
+# Starts the HTML menu as the primary UI once NEXUS display and Tvheadend are up.
+# Switch off without touching the image: rm /data/native-frontend/enable-html-autostart
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+set -u
+cd /
+runtime=/data/nexus-loader-test-v1
+flag=/data/native-frontend/enable-html-autostart
+[ "$(cat /run/alpine-data-status 2>/dev/null)" = DATA_MOUNTED_RW ] || { echo UI_DATA_NOT_MOUNTED; exit 1; }
+[ -e "$flag" ] || { echo UI_AUTOSTART_DISABLED; exit 0; }
+[ -f /data/native-frontend/html-control.sh ] || { echo UI_NOT_INSTALLED; exit 1; }
+
+# Wait for nxserver. DISPLAY_TEST_* states come from older images with a boot screen test.
+n=0
+while :; do
+ [ ! -e /run/nexus-tuner-shutdown ] || { echo UI_SHUTDOWN_IN_PROGRESS; exit 0; }
+ status=$(cat /run/nexus-display-status 2>/dev/null || true)
+ case "$status" in
+  DISPLAY_TEST_PASSED|DISPLAY_TEST_FAILED) [ -S "$runtime/tmp/nxserver_ipc" ] && break ;;
+  SERVER_RUNNING) [ -S "$runtime/tmp/nxserver_ipc" ] && break ;;
+  DISABLED|START_FAILED) echo "UI_DISPLAY_UNAVAILABLE STATUS=$status"; exit 1 ;;
+ esac
+ n=$((n+1)); [ "$n" -le 180 ] || { echo "UI_DISPLAY_TIMEOUT STATUS=$status"; exit 1; }
+ sleep 1
+done
+echo "UI_DISPLAY_READY STATUS=$status"
+
+# Keep the menu usable while DHCP/NTP/backend startup catches up.
+n=0
+until [ "$(cat /run/tvheadend-status 2>/dev/null)" = RUNNING ]; do
+ [ ! -e /run/nexus-tuner-shutdown ] || { echo UI_SHUTDOWN_IN_PROGRESS; exit 0; }
+ n=$((n+1)); [ "$n" -le 15 ] || { echo UI_TVHEADEND_NOT_RUNNING_STARTING_ANYWAY; break; }
+ sleep 1
+done
+sleep 5
+echo "UI_LAUNCH UPTIME=$(cut -d ' ' -f 1 /proc/uptime)"
+[ ! -e /run/nexus-tuner-shutdown ] || { echo UI_SHUTDOWN_IN_PROGRESS; exit 0; }
+exec /bin/sh /data/native-frontend/html-control.sh start

@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Phoenix</title>
+<style>
+/* Written for the stock stock browser (webkitGl39): ES5, no CSS variables.
+   Layout follows the stock Gen3 UI (2026-05-18 release): 1280x720 stage, Texta type, black
+   list surfaces. "Molten" palette (reforged): ember-to-gold focus #b8320b > #e8650f > #f5b42a,
+   gold #f0a020, warm greys F6EEE6 / C7B6A8 / 97877B / 78695F / 3B2C25, panels 1D1310.
+   The page background stays opaque: Chromium runs with WEBKITGL_TRANSPARENT_BACKGROUND=y
+   so that later playback overlays can be transparent. */
+@font-face { font-family: "Texta Medium"; src: url("/fonts/Texta-Medium.ttf"); }
+@font-face { font-family: "Texta Light"; src: url("/fonts/Texta-Light.ttf"); }
+@font-face { font-family: "Texta Bold"; src: url("/fonts/Texta-Bold.ttf"); }
+html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #000000; }
+body { position: relative; font-family: "Texta Medium", "DejaVu Sans", Arial, sans-serif; color: #f6eee6; }
+
+#header { position: absolute; left: 0; top: 0; width: 1280px; height: 158px;
+          background: linear-gradient(to bottom, #2f1c13 0%, #000000 100%); }
+/* Reforged brand: the phoenix rising from the ashes (phoenix.png), no wordmark. */
+#brand { position: absolute; left: 60px; top: 25px; width: 47px; height: 46px; }
+#brand img { display: block; width: 47px; height: 46px; opacity: 0.75; }
+#bar { position: absolute; left: 127px; top: 37px; width: 2px; height: 23px; background: #78695f; }
+#title { position: absolute; left: 153px; top: 28px; width: 878px; font-size: 32px; line-height: 40px;
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#clock { position: absolute; right: 64px; top: 34px; font-family: "Texta Light", sans-serif; font-size: 26px;
+         line-height: 32px; color: #c7b6a8; }
+#subtitle { position: absolute; left: 64px; top: 100px; font-family: "Texta Light", sans-serif; font-size: 24px;
+            line-height: 32px; color: #97877b; }
+#rule { position: absolute; left: 64px; top: 146px; width: 1152px; height: 2px; background: #3b2c25; }
+
+#list { position: absolute; left: 64px; top: 158px; width: 832px; margin: 0; padding: 0; list-style: none; }
+#list li { position: relative; height: 64px; margin-bottom: 8px; border-bottom: 2px solid #3b2c25;
+           white-space: nowrap; overflow: hidden; color: #c7b6a8; }
+#list li .lead { position: absolute; left: 24px; top: 0; width: 150px; line-height: 64px; font-size: 24px;
+                 color: #97877b; overflow: hidden; }
+#list li .name { position: absolute; left: 24px; right: 24px; top: 0; line-height: 64px; font-size: 28px;
+                 overflow: hidden; text-overflow: ellipsis; }
+#list li.haslead .name { left: 186px; }
+#list li.haslead.short .name { left: 110px; }
+/* Channel logo from Tvheadend's imagecache in place of the number; the number comes back if it fails. */
+#list li .icon { display: none; position: absolute; left: 20px; top: 8px; width: 84px; height: 48px; }
+#list li .icon img, #metaIcon img, #osdIcon img { position: absolute; left: 0; top: 0; bottom: 0; margin: auto 0;
+                                                 max-width: 100%; max-height: 100%; }
+#list li .icon img { right: 0; margin: auto; }
+#list li.hasicon .icon { display: block; }
+#list li.hasicon .lead { display: none; }
+#list li.hasicon .name { left: 120px; }
+#list li .dot { display: none; position: absolute; right: 24px; top: 25px; width: 14px; height: 14px;
+                border-radius: 7px; background: #e5302a; }
+#list li.rec .dot { display: block; }
+#list li.rec .name { right: 56px; }
+/* Molten focus: ember red flowing into gold; text stays light with a soft shadow. */
+#list li.sel { background: #e8650f; background: linear-gradient(to right, #b8320b 0%, #e8650f 45%, #f5b42a 100%); border-bottom-color: #f5b42a; color: #fffaf0;
+               text-shadow: 0 1px 2px rgba(60,15,0,0.6); }
+#list li.sel .lead { color: #fffaf0; }
+#list li.sel .dot { background: #ffffff; }
+#list li.empty { border-bottom-color: transparent; }
+
+#meta { position: absolute; left: 928px; top: 158px; width: 288px; height: 424px; padding: 0;
+        background: #1d1310; overflow: hidden; }
+#metaIcon { display: none; position: relative; height: 80px; margin: 24px 24px 0; }
+#metaIcon.on { display: block; }
+#metaKind { margin: 24px 24px 0; font-size: 18px; line-height: 24px; letter-spacing: 1px; color: #f0a020; }
+#metaKind.rec { color: #e5302a; }
+#metaTitle { margin: 8px 24px 0; font-size: 28px; line-height: 32px; color: #f6eee6; max-height: 128px;
+             overflow: hidden; }
+#metaLead { margin: 12px 24px 0; font-family: "Texta Light", sans-serif; font-size: 22px; line-height: 28px;
+            color: #c7b6a8; }
+#metaStatus { position: absolute; left: 24px; right: 24px; bottom: 24px; font-family: "Texta Light", sans-serif;
+              font-size: 22px; line-height: 28px; color: #c7b6a8; }
+#metaStatus.alert { color: #e78c21; }
+
+#pager { position: absolute; left: 64px; top: 600px; width: 832px; height: 4px; background: #3b2c25; }
+#pagerThumb { position: absolute; top: 0; height: 4px; background: #97877b; }
+
+#hints { position: absolute; left: 64px; top: 640px; font-size: 20px; line-height: 32px; color: #97877b;
+         white-space: nowrap; }
+#hints b { display: inline-block; min-width: 24px; height: 28px; line-height: 28px; padding: 0 8px; margin: 0 8px 0 0;
+           border-radius: 4px; background: #3b2c25; color: #f6eee6; font-weight: normal; font-size: 18px;
+           text-align: center; }
+#hints i { display: inline-block; width: 32px; font-style: normal; }
+
+/* Playback: the page goes transparent over the vendor player's video and only the
+   bottom bar (as the stock info bar) is drawn, on pause/FF/RW and briefly after keys. */
+html.playback, body.playback { background: transparent; }
+body.playback #header, body.playback #list, body.playback #meta, body.playback #pager,
+body.playback #hints { display: none; }
+#osd { display: none; position: absolute; left: 0; top: 470px; width: 1280px; height: 250px;
+       background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.75) 45%, rgba(0,0,0,0.9) 100%); }
+/* Shown on start, on keys and while paused/FF/RW; fades out a few seconds after normal play. */
+body.playback #osd { display: block; opacity: 0; -webkit-transition: opacity 0.6s; transition: opacity 0.6s; }
+body.playback #osd.show { opacity: 1; }
+#osdTitle { position: absolute; left: 64px; top: 92px; width: 900px; font-size: 32px; line-height: 36px;
+            color: #f6eee6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#osdIcon { display: none; position: absolute; left: 64px; top: 80px; width: 108px; height: 60px; }
+#osdIcon.on { display: block; }
+#osdTitle.icon { left: 188px; width: 776px; }
+#osdState { position: absolute; right: 64px; top: 92px; font-size: 28px; line-height: 36px; color: #f6eee6; }
+#osdBar { position: absolute; left: 64px; top: 150px; width: 1152px; height: 6px; background: #3b2c25; }
+#osdFill { position: absolute; left: 0; top: 0; height: 6px; width: 0; background: #e8650f;
+           background: linear-gradient(to right, #b8320b 0%, #e8650f 50%, #f5b42a 100%); }
+#osdThumb { position: absolute; top: -5px; width: 4px; height: 16px; margin-left: -2px; background: #f6eee6; }
+#osdTime { position: absolute; left: 64px; top: 170px; font-family: "Texta Light", sans-serif; font-size: 24px;
+           line-height: 28px; color: #c7b6a8; }
+#osdEnd { position: absolute; right: 64px; top: 170px; font-family: "Texta Light", sans-serif; font-size: 24px;
+          line-height: 28px; color: #c7b6a8; }
+/* Paused scrubber: target marker on the bar and its time above it. */
+#osdTarget { display: none; position: absolute; top: -9px; width: 12px; height: 24px; margin-left: -6px;
+             background: #f0a020; border: 2px solid #f6eee6; border-radius: 3px; }
+#osdScrub { display: none; position: absolute; top: 108px; width: 160px; text-align: center;
+            font-size: 26px; line-height: 32px; color: #f6eee6; }
+#osd.scrub #osdTarget, #osd.scrub #osdScrub { display: block; }
+/* Volume indicator, top right, for a few seconds after a volume key. */
+#vol { display: none; position: absolute; right: 64px; top: 48px; width: 320px; height: 76px;
+       background: rgba(0,0,0,0.8); border-radius: 6px; }
+body.playback #vol.show { display: block; }
+#volLabel { position: absolute; left: 20px; top: 10px; font-size: 22px; line-height: 26px; color: #f6eee6; }
+#volValue { position: absolute; right: 20px; top: 10px; font-size: 22px; line-height: 26px; color: #c7b6a8; }
+#volBars { position: absolute; left: 20px; top: 46px; width: 280px; height: 14px; }
+#volBars div { float: left; width: 11px; height: 14px; margin-right: 3px; background: #3b2c25; }
+#volBars div.on { background: #f0a020; }
+#vol.muted #volBars div.on { background: #78695f; }
+
+/* First-run welcome and live configuration progress. */
+#setup { display:none; position:absolute; left:64px; top:176px; width:1152px; height:486px; }
+body.setup #setup { display:block; }
+body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { display:none; }
+#setupHeading { font-size:40px; line-height:48px; color:#f6eee6; }
+#setupMessage { margin-top:14px; font-size:28px; line-height:36px; color:#f0a020; }
+#setupDetail { margin-top:8px; font-size:23px; line-height:30px; color:#c7b6a8; }
+#setupTrack { margin-top:24px; height:8px; width:1152px; background:#3b2c25; }
+#setupFill { height:8px; background:linear-gradient(to right,#b8320b,#f5b42a); width:0; }
+#setupCount { margin-top:10px; font-size:22px; color:#c7b6a8; height:28px; }
+#setupSteps { position:absolute; left:0; top:226px; width:440px; font-size:23px; line-height:34px; color:#78695f; }
+#setupSteps .current { color:#f0a020; }
+#setupSteps .done { color:#c7b6a8; }
+#setupFound { position:absolute; left:500px; top:226px; width:652px; }
+#setupFoundTitle { color:#f0a020; font-size:20px; margin-bottom:7px; }
+#setupNames { color:#c7b6a8; font-size:22px; line-height:27px; height:162px; overflow:hidden; }
+#setupNames div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#setupButton { position:absolute; left:0; bottom:0; min-width:200px; height:58px; padding:0 30px; border:2px solid #f5b42a;
+ font-family:"Texta Medium",sans-serif; font-size:28px; color:#fffaf0; background:linear-gradient(to right,#b8320b,#e8650f,#f5b42a); }
+#setup.waiting #setupTrack, #setup.waiting #setupCount, #setup.waiting #setupSteps, #setup.waiting #setupFound { display:none; }
+#setup.waiting #setupMessage { margin-top:44px; }
+#setup.error #setupMessage { color:#ffa37b; max-height:108px; overflow:hidden; }
+#setup.error #setupTrack, #setup.error #setupCount, #setup.error #setupSteps, #setup.error #setupFound { display:none; }
+
+</style>
+<link rel="stylesheet" href="/guide.css">
+</head>
+<body>
+<div id="header">
+  <div id="brand"><img src="/phoenix.png" width="47" height="46" alt=""></div>
+  <div id="bar"></div>
+  <div id="title">Home</div>
+  <div id="clock"></div>
+  <div id="subtitle"></div>
+  <div id="rule"></div>
+</div>
+<ul id="list"></ul>
+<div id="meta">
+  <div id="metaIcon"></div>
+  <div id="metaKind"></div>
+  <div id="metaTitle"></div>
+  <div id="metaLead"></div>
+  <div id="metaStatus">Loading...</div>
+</div>
+<div id="pager"><div id="pagerThumb"></div></div>
+
+<div id="setup" role="region" aria-label="Initial setup">
+ <div id="setupHeading"></div><div id="setupMessage" aria-live="polite"></div><div id="setupDetail"></div>
+ <div id="setupTrack"><div id="setupFill"></div></div><div id="setupCount"></div>
+ <div id="setupSteps"></div><div id="setupFound"><div id="setupFoundTitle"></div><div id="setupNames"></div></div>
+ <button id="setupButton" type="button">Start</button>
+</div>
+
+<div id="hints"><b>OK</b>Select<i></i><b>BACK</b>Return<i></i><b>&#9664; &#9654;</b>Page</div>
+<div id="guide">
+  <div id="gDay"></div><div id="gTimes"></div><div id="gNowTag"></div>
+  <div id="gRows"></div><div id="gNow"></div><div id="gClock"></div>
+  <div id="gScroll"><div id="gThumb"></div></div>
+  <div id="gInfo">
+    <div id="gPic"><div id="gPicNum"></div><div id="gPicName"></div></div>
+    <div id="gText">
+      <div id="gTitle"><span id="gTitleText"></span><span id="gBadge"></span></div>
+      <div id="gEpisode"></div><div id="gDesc"></div><div id="gWhen"></div>
+    </div>
+  </div>
+</div>
+<div id="osd"><div id="osdIcon"></div><div id="osdTitle"></div><div id="osdState"></div>
+  <div id="osdBar"><div id="osdFill"></div><div id="osdThumb"></div><div id="osdTarget"></div></div>
+  <div id="osdScrub"></div>
+  <div id="osdTime"></div><div id="osdEnd"></div></div>
+<div id="vol"><div id="volLabel">Volume</div><div id="volValue"></div><div id="volBars"></div></div>
+<script src="/guide.js"></script>
+<script>
+(function () {
+    'use strict';
+    var TOKEN = '__MENU_TOKEN__';
+    var ROWS = 6;
+    var view = null;
+    var busy = false;
+
+    // the DVR trial: Up 38, Down 40, OK 1073741994 (U+400000AA), Back 213 (U+00D5).
+    // Left/Right follow the Chromium IR log (37/39). Other aliases are kept for desktop preview.
+    var KEYS = {
+        38: 'UP', 40: 'DOWN', 37: 'LEFT', 39: 'RIGHT',
+        13: 'OK', 1073741994: 'OK', 170: 'OK',
+        213: 'BACK', 8: 'BACK', 27: 'BACK', 461: 'BACK', 166: 'BACK', 10009: 'BACK'
+    };
+    var LIVE_PAUSE_KEYS = { 1073741994: 1, 13: 1, 40: 1, 37: 1, 412: 1, 19: 1, 179: 1, 415: 1 };
+    var NAMES = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
+                  Up: 'UP', Down: 'DOWN', Left: 'LEFT', Right: 'RIGHT', Enter: 'OK',
+                  Escape: 'BACK', Backspace: 'BACK', BrowserBack: 'BACK', GoBack: 'BACK' };
+
+    // Page titles from the controller are upper case; show them the way the stock UI did.
+    var TITLES = { 'PHOENIX': 'Home', 'LIVE TV': 'Live TV', 'GUIDE - SELECT CHANNEL': 'TV Guide',
+                   'RECORDINGS': 'Recordings', 'SCHEDULED RECORDINGS': 'Scheduled Recordings',
+                   'SETTINGS': 'Settings', 'DEVICE INFO': 'Device info',
+                   'EPG SETTINGS': 'EPG settings', 'SELECT EPG FEED': 'Select EPG feed',
+                   'EPG SOURCE': 'EPG source', 'EPG CHANNEL MAPPING': 'EPG channel mapping' };
+    var SUBTITLES = { home: 'What would you like to watch?', live: 'Select a channel to watch',
+                      guide: 'Select a channel to see what’s on', events: 'Select a programme to record',
+                      recordings: 'Your recordings', scheduled: 'Upcoming recordings', confirm: '',
+                      resume: 'Carry on where you left off?', settings: 'Choose a setting',
+                      'device-info': 'About your Phoenix device' };
+    var KINDS = { home: 'MENU', live: 'CHANNEL', guide: 'CHANNEL', events: 'PROGRAMME',
+                  recordings: 'RECORDING', scheduled: 'SCHEDULED', confirm: 'RECORD',
+                  resume: 'RECORDING', settings: 'SETTINGS', 'device-info': 'DEVICE INFO' };
+    var TIME = /^([A-Z][a-z]{2} \d{2} \d{2}:\d{2}) (.*)$/;
+    var NUMBER = /^(\d+(?:\.\d+)?) (.*)$/;
+    var LIVE_PREFIX = 'RECORDING NOW - ';
+
+    function $(id) { return document.getElementById(id); }
+
+    // Split a controller row into an optional lead column (channel number or start time) and a name.
+    function parse(row, page) {
+        var out = { lead: '', name: row, rec: false };
+        if (row.indexOf(LIVE_PREFIX) === 0) {
+            out.rec = true;
+            out.name = row.substring(LIVE_PREFIX.length);
+        }
+        var m = null;
+        if (page === 'live' || page === 'guide') { m = NUMBER.exec(out.name); }
+        else if (page === 'events' || page === 'recordings' || page === 'scheduled') { m = TIME.exec(out.name); }
+        if (m) { out.lead = m[1]; out.name = m[2]; out.short = page === 'live' || page === 'guide'; }
+        return out;
+    }
+
+    function request(method, path, body, done) {
+        var xhr = new XMLHttpRequest();
+        xhr.open(method, path, true);
+        xhr.timeout = 15000;
+        if (body) {
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-Menu-Token', TOKEN);
+        }
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) { return; }
+            var data = null;
+            if (xhr.status === 200) {
+                try { data = JSON.parse(xhr.responseText); } catch (e) { data = null; }
+            }
+            if (done) { done(data); }
+        };
+        xhr.send(body ? JSON.stringify(body) : null);
+    }
+
+    function setText(id, value) { $(id).textContent = value || ''; }
+
+    // Channel logos (/img/<n>, Tvheadend imagecache). A logo that fails once is not tried
+    // again, and its spot falls back to the channel number.
+    var badIcons = {};
+    function logo(box, url, failed) {
+        while (box.firstChild) { box.removeChild(box.firstChild); }
+        if (!url || badIcons[url]) { return false; }
+        var img = document.createElement('img');
+        img.onerror = function () {
+            badIcons[url] = true;
+            if (img.parentNode) { img.parentNode.removeChild(img); }
+            if (failed) { failed(); }
+        };
+        img.src = url;
+        box.appendChild(img);
+        return true;
+    }
+    var shownIcons = { metaIcon: '', osdIcon: '' };
+    function setIcon(id, url, onClass) {
+        if (shownIcons[id] === url && (!url || !badIcons[url])) { return; }
+        shownIcons[id] = url;
+        var box = $(id), on = logo(box, url, function () { box.className = ''; if (onClass) { onClass(false); } });
+        box.className = on ? 'on' : '';
+        if (onClass) { onClass(on); }
+    }
+
+    function renderSetup(state) {
+        var panel = $('setup');
+        panel.className = state.state;
+        setText('setupHeading', state.heading);
+        setText('setupMessage', state.message);
+        setText('setupDetail', state.detail || (state.state === 'error' ? 'Press Retry to try again. Your progress log has been saved.' : ''));
+        var total = +state.total || 0, current = +state.current || 0;
+        $('setupFill').style.width = (total ? Math.max(0, Math.min(100,100*current/total)) : 0)+'%';
+        setText('setupCount', total ? current+' of '+total+' — '+(state.mapped_count || state.service_count || state.found || 0)+' found' : '');
+        var stages = ['configuring','sweep','capacity','discovery','mapping','icons','complete'];
+        var labels = ['Configuring TV Headend','Multiplex scan','Checking reception','Finding channel names','Channel mapping','Finishing configuration'];
+        var active = stages.indexOf(state.stage), steps = $('setupSteps');
+        while (steps.firstChild) { steps.removeChild(steps.firstChild); }
+        for (var i=0; i<labels.length; i++) {
+            var row = document.createElement('div');
+            row.className = i === active ? 'current' : (i < active ? 'done' : '');
+            row.textContent = (i < active ? '\u2713 ' : (i === active ? '\u203a ' : '  '))+labels[i];
+            steps.appendChild(row);
+        }
+        var channels = state.channels || [], muxes = state.muxes || [];
+        var names = channels.length ? channels : muxes;
+        setText('setupFoundTitle', channels.length ? channels.length+' channel names found' : (muxes.length ? muxes.length+' multiplexes found' : ''));
+        var box = $('setupNames');
+        while (box.firstChild) { box.removeChild(box.firstChild); }
+        for (var n=Math.max(0,names.length-6); n<names.length; n++) {
+            var item=document.createElement('div'); item.textContent=names[n]; box.appendChild(item);
+        }
+        var button=$('setupButton'); button.style.display=state.button ? 'block' : 'none';
+        button.textContent=state.button || ''; button.disabled=!state.button;
+    }
+
+    function render(next) {
+        if (!next) {
+            setText('metaStatus', 'Menu service not responding. Retrying...');
+            $('metaStatus').className = 'alert';
+            return;
+        }
+        view = next;
+        document.body.className = view.setup ? 'setup' : (view.playback ? 'playback' : '');
+        document.documentElement.className = view.playback ? 'playback' : '';
+        if (view.setup) {
+            if (window.Guide) { window.Guide.hide(); }
+            setText('title', 'Welcome'); setText('subtitle', 'Let’s get your channels ready'); setText('clock', view.clock);
+            renderSetup(view.setup); return;
+        }
+        if (view.playback) { renderOsd(view); }
+        // The programme guide page is drawn as a grid by guide.js.
+        if (window.Guide) {
+            if (view.page === 'guide' && !view.playback) { window.Guide.show(view); }
+            else { window.Guide.hide(); }
+        }
+        setText('title', TITLES[view.title] || view.title);
+        setText('subtitle', SUBTITLES[view.page] !== undefined ? SUBTITLES[view.page] : '');
+        setText('clock', view.clock);
+
+        var list = $('list');
+        while (list.firstChild) { list.removeChild(list.firstChild); }
+        var focused = null;
+        for (var i = 0; i < ROWS; i++) {
+            var li = document.createElement('li');
+            var row = view.rows[i];
+            if (row === undefined) {
+                li.className = 'empty';
+            } else {
+                var item = parse(row, view.page);
+                var cls = [];
+                if (item.lead) {
+                    var lead = document.createElement('div');
+                    lead.className = 'lead';
+                    lead.textContent = item.lead;
+                    li.appendChild(lead);
+                    cls.push(item.short ? 'haslead short' : 'haslead');
+                    item.icon = view.icons && view.icons[i] || '';
+                    var icon = document.createElement('div');
+                    icon.className = 'icon';
+                    if (logo(icon, item.icon, (function (row) {
+                        return function () { row.className = row.className.replace(/(^| )hasicon\b/, ''); };
+                    }(li)))) { cls.push('hasicon'); }
+                    li.appendChild(icon);
+                }
+                var name = document.createElement('div');
+                name.className = 'name';
+                name.textContent = item.name;
+                li.appendChild(name);
+                var dot = document.createElement('div');
+                dot.className = 'dot';
+                li.appendChild(dot);
+                if (item.rec) { cls.push('rec'); }
+                if (i === view.selected) { cls.push('sel'); focused = item; }
+                li.className = cls.join(' ');
+            }
+            list.appendChild(li);
+        }
+
+        // Right-hand detail panel, as on the stock recordings and guide surfaces.
+        var kind = KINDS[view.page] || '';
+        if (focused && focused.rec) { kind = 'RECORDING NOW'; }
+        setText('metaKind', focused ? kind : '');
+        $('metaKind').className = focused && focused.rec ? 'rec' : '';
+        setText('metaTitle', focused ? focused.name : '');
+        setText('metaLead', focused ? focused.lead : '');
+        setIcon('metaIcon', focused && focused.icon || '');
+        setText('metaStatus', view.status);
+        var alert = /error|scheduled|not responding/i.test(view.status) && !/ of /.test(view.status);
+        $('metaStatus').className = alert ? 'alert' : '';
+
+        // Page position bar under the list.
+        var m = /^(\d+) of (\d+)$/.exec(view.status);
+        var thumb = $('pagerThumb');
+        if (m && +m[2] > ROWS) {
+            var pages = Math.ceil(+m[2] / ROWS), page = Math.floor((+m[1] - 1) / ROWS);
+            thumb.style.width = Math.max(40, Math.round(832 / pages)) + 'px';
+            thumb.style.left = Math.round((832 - Math.max(40, Math.round(832 / pages))) * page / (pages - 1)) + 'px';
+            $('pager').style.visibility = 'visible';
+        } else {
+            $('pager').style.visibility = 'hidden';
+        }
+    }
+
+    // ---- Playback bar ----
+    var osdUntil = 0, wasPlayback = false, wasTrick = false;
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function hms(seconds) {
+        seconds = Math.max(0, Math.floor(seconds));
+        var h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
+        return (h ? h + ':' + pad(m) : m) + ':' + pad(s);
+    }
+    function renderOsd(v) {
+        var p = v.playing || {}, st = p.player, now = Date.now();
+        if (!wasPlayback) { osdUntil = now + 6000; wasTrick = false; }   // show on start
+        var trick = !!st && (st.state !== 1 || st.rate !== 1000);
+        if (wasTrick && !trick) { osdUntil = Math.max(osdUntil, now + 3000); }  // fade after resume
+        wasTrick = trick;
+        var state = !st ? 'Loading' : st.rate === 0 || st.state === 2 ? '❚❚  Paused' :
+            st.rate > 1000 ? '▶▶  x' + st.rate / 1000 :
+            st.rate < 0 ? '◀◀  x' + (-st.rate / 1000) : '▶';
+        setText('osdTitle', p.title || '');
+        setIcon('osdIcon', p.live && p.icon || '', function (on) { $('osdTitle').className = on ? 'icon' : ''; });
+        setText('osdState', state);
+        var pos = st ? st.pos / 1000 : 0, dur = p.duration || 0;
+        if (p.live && p.starting) {
+            // Live TV is filling its pause buffer before the picture starts.
+            osdUntil = Math.max(osdUntil, now + 3000);
+            setText('osdState', 'Please wait');
+            setText('osdTime', 'Starting live TV...'); setText('osdEnd', '');
+            $('osdBar').style.visibility = 'hidden';
+        } else if (p.live && st && typeof p.buffer === 'number' && p.buffer > 0) {
+            // Timeshifted live TV: the bar is the pause buffer (at most 4 h), its right end is live.
+            var buf = p.buffer, from = Math.min(p.buffer_from || 0, buf), span = Math.max(1, buf - from);
+            var at = Math.max(from, Math.min(pos, buf)), behind = buf - at;
+            setText('osdTime', behind < 6 ? 'LIVE' : '-' + hms(behind) + '  behind live');
+            setText('osdEnd', hms(buf - from) + ' buffered');
+            $('osdBar').style.visibility = 'visible';
+            $('osdFill').style.width = Math.round(1152 * (at - from) / span) + 'px';
+            $('osdThumb').style.left = Math.round(1152 * (at - from) / span) + 'px';
+        } else if (p.live) {
+            if (p.mode === 'relay') { setText('osdState', ''); }   // direct live feed: no player status
+            setText('osdTime', 'LIVE'); setText('osdEnd', '');
+            $('osdBar').style.visibility = 'hidden';
+        } else {
+            setText('osdTime', hms(pos));
+            setText('osdEnd', dur ? hms(dur) : '');
+            var frac = dur ? Math.min(1, pos / dur) : 0;
+            $('osdBar').style.visibility = dur && p.indexed ? 'visible' : 'hidden';
+            $('osdFill').style.width = Math.round(1152 * frac) + 'px';
+            $('osdThumb').style.left = Math.round(1152 * frac) + 'px';
+        }
+        $('osd').className = (trick || now < osdUntil) ? 'show' : '';
+        renderExtras(p, st, pos, dur);
+    }
+
+    // Paused scrub target (player-status SCRUB=, ms, -1 none) and the volume indicator.
+    var lastVtick = 0, volUntil = 0, volTimer = null;
+    function renderExtras(p, st, pos, dur) {
+        var osd = $('osd');
+        if (!wasPlayback) { lastVtick = 0; volUntil = 0; }
+        var span = p.live ? (typeof p.buffer === 'number' ? p.buffer : 0) : (p.indexed ? dur : 0);
+        if (st && typeof st.scrub === 'number' && st.scrub >= 0 && span > 0) {
+            var target = Math.min(st.scrub / 1000, span), x = Math.round(1152 * target / span);
+            $('osdTarget').style.left = x + 'px';
+            $('osdScrub').style.left = 64 + Math.max(0, Math.min(1152 - 160, x - 80)) + 'px';
+            setText('osdScrub', (target >= pos ? '▶ ' : '◀ ') + hms(target));
+            setText('osdState', 'OK to play from here');
+            osd.className = 'show scrub';
+        }
+        if (st && typeof st.vtick === 'number' && st.vtick > 0 && st.vtick !== lastVtick && st.vol >= 0) {
+            lastVtick = st.vtick;
+            volUntil = Date.now() + 3000;
+            var bars = $('volBars');
+            if (!bars.firstChild) { for (var i = 0; i < 20; i++) { bars.appendChild(document.createElement('div')); } }
+            for (var j = 0; j < 20; j++) { bars.childNodes[j].className = j < st.vol ? 'on' : ''; }
+            setText('volLabel', st.mute ? 'Muted' : 'Volume');
+            setText('volValue', st.mute ? '' : String(st.vol));
+            if (volTimer) { window.clearTimeout(volTimer); }
+            volTimer = window.setTimeout(function () { $('vol').className = ''; }, 3000);
+        }
+        $('vol').className = Date.now() < volUntil ? (st && st.mute ? 'show muted' : 'show') : '';
+    }
+
+    // After a remote key during playback, retrieve the status again soon so the scrub target
+    // and volume show without waiting for the next once-a-second poll.
+    function refreshSoon() {
+        window.setTimeout(refresh, 150);
+        window.setTimeout(refresh, 450);
+    }
+
+    function refresh() {
+        if (busy) { return; }
+        request('GET', '/api/view', null, function (data) {
+            if (busy) { return; }
+            if (!view || !data || data.revision !== view.revision || data.setup || view.setup || data.page === 'epg-settings') { render(data); }
+            else if (data.playback) { view = data; renderOsd(data); }
+            else { setText('clock', data.clock); }
+            wasPlayback = !!(data && data.playback);
+        });
+    }
+
+    function send(command) {
+        if (busy || !view || view.playback) { return; }
+        busy = true;
+        request('POST', '/api/command', { revision: view.revision, command: command }, function (data) {
+            busy = false;
+            render(data);
+        });
+    }
+
+
+    $('setupButton').addEventListener('click', function () { send('OK'); });
+
+    document.addEventListener('keydown', function (event) {
+        var code = event.keyCode || event.which || 0;
+        var command = KEYS[code] || NAMES[event.key] || NAMES[event.keyIdentifier];
+        request('POST', '/api/key', { code: code, key: event.key || event.keyIdentifier || '' }, null);
+        // Watching the direct live feed: Pause, OK, Down or Left/Rewind switches to the pause buffer.
+        if (view && view.playback && view.playing && view.playing.live && view.playing.mode === 'relay' &&
+            LIVE_PAUSE_KEYS[code] && !event.repeat) {
+            request('POST', '/api/live-pause', { revision: view.revision }, null);
+        }
+        // Live tuner: no player process has the remote, so Back/Stop (and Back aliases) end live TV here.
+        if (view && view.playback && view.playing && view.playing.source === 'tuner' &&
+            view.playing.mode === 'relay' && (command === 'BACK' || code === 413) && !event.repeat) {
+            request('POST', '/api/live-stop', { revision: view.revision }, null);
+        }
+        if (view && view.playback) {          // the player handles keys; just show the bar
+            osdUntil = Date.now() + 5000;
+            renderOsd(view);
+            refreshSoon();
+            event.preventDefault();
+            return;
+        }
+        // Stop Backspace/Back from navigating the browser away from the menu.
+        event.preventDefault();
+        if (command && window.Guide && window.Guide.visible()) {
+            if (busy || (event.repeat && (command === 'OK' || command === 'BACK'))) { return; }
+            window.Guide.key(command);
+            return;
+        }
+        if (command && !event.repeat) { send(command); }
+        else if (command === 'UP' || command === 'DOWN') { send(command); }
+    }, true);
+
+
+    if (window.Guide) {
+        window.Guide.init({
+            request: request,
+            back: function () { send('BACK'); },
+            select: function (channel, eventId) {
+                if (busy || !view || view.playback) { return; }
+                busy = true;
+                request('POST', '/api/guide', { revision: view.revision, channel: channel, event: eventId },
+                        function (data) { busy = false; render(data); });
+            }
+        });
+    }
+
+    // Poll quickly during playback (position bar), slowly in the menu.
+    window.setInterval(function () { if (view && view.playback) { refresh(); } }, 1000);
+    window.setInterval(function () { if (!view || !view.playback) { refresh(); } }, 3000);
+    refresh();
+}());
+</script>
+</body>
+</html>

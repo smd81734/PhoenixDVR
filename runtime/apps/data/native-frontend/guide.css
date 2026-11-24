@@ -1,0 +1,89 @@
+/* Grid programme guide (guide.js). Chromium 39: no CSS variables, flex gap or grid.
+   Same palette and Texta faces as menu.html: black surfaces, #1d1310 panels, #f0a020 focus,
+   Molten warm greys F6EEE6 / C7B6A8 / 97877B / 78695F / 3B2C25, red #E5302A for recordings. */
+body.guide #subtitle, body.guide #rule, body.guide #list, body.guide #meta,
+body.guide #pager, body.guide #hints { display: none; }
+#guide { display: none; position: absolute; left: 0; top: 0; width: 1280px; height: 720px; }
+body.guide #guide { display: block; }
+
+/* Time header: day label above the channel column, 30-minute slots above the grid. */
+#gDay { position: absolute; left: 64px; top: 92px; width: 176px; height: 36px; line-height: 36px;
+        font-size: 22px; color: #f6eee6; white-space: nowrap; overflow: hidden; }
+#gTimes { position: absolute; left: 248px; top: 92px; width: 968px; height: 36px; overflow: hidden; }
+#gTimes div { position: absolute; top: 0; height: 36px; line-height: 36px; padding-left: 10px;
+              border-left: 2px solid #3b2c25; font-family: "Texta Light", sans-serif; font-size: 22px;
+              color: #c7b6a8; white-space: nowrap; }
+#gNowTag { position: absolute; top: 120px; width: 0; height: 0; margin-left: -7px;
+           border-left: 7px solid transparent; border-right: 7px solid transparent;
+           border-top: 8px solid #f6eee6; display: none; }
+
+/* Channel rows. Cells are absolutely placed by start/stop; a 4px gap is left on the right. */
+#gRows { position: absolute; left: 64px; top: 132px; width: 1152px; height: 352px; overflow: hidden; }
+.gRow { position: absolute; left: 0; width: 1152px; height: 40px; }
+.gLogo { position: absolute; left: 0; top: 0; width: 176px; height: 40px; background: #1d1310;
+         overflow: hidden; }
+.gLogo img { position: absolute; left: 10px; top: 4px; max-width: 76px; max-height: 32px; }
+.gNum { position: absolute; left: 12px; top: 0; width: 56px; line-height: 40px; font-family: "Texta Bold", sans-serif;
+        font-size: 22px; color: #f6eee6; white-space: nowrap; overflow: hidden; }
+.gName { position: absolute; left: 68px; right: 10px; top: 0; line-height: 40px; font-family: "Texta Light", sans-serif;
+         font-size: 18px; color: #c7b6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gLogo.hasImg .gNum { left: 96px; width: 72px; }
+.gLogo.hasImg .gName { display: none; }
+.gRow.cur .gLogo { background: #2f1c13; }
+.gRow.cur .gName { color: #f6eee6; }
+
+.gCell { position: absolute; top: 0; height: 40px; background: #1d1310; overflow: hidden; white-space: nowrap;
+         color: #c7b6a8; }
+.gCell.now { background: #232220; }
+.gCell.none { background: #120b08; color: #78695f; }
+.gCell.sel { background: #e8650f; background: linear-gradient(to right, #b8320b 0%, #e8650f 45%, #f5b42a 100%); color: #fffaf0;
+             text-shadow: 0 1px 2px rgba(60,15,0,0.6); }
+.gT { position: absolute; left: 14px; right: 14px; top: 0; font-size: 21px; line-height: 40px;
+      overflow: hidden; text-overflow: ellipsis; }
+.gCell.cl .gT { left: 30px; }
+.gCell.cr .gT { right: 30px; }
+.gArrL, .gArrR { display: none; position: absolute; top: 0; width: 22px; line-height: 38px; font-size: 26px;
+                 text-align: center; color: #97877b; }
+.gArrL { left: 4px; }
+.gArrR { right: 4px; }
+.gCell.cl .gArrL, .gCell.cr .gArrR { display: block; }
+.gCell.sel .gArrL, .gCell.sel .gArrR { color: #f6eee6; }
+.gDot { display: none; position: absolute; right: 12px; top: 15px; width: 10px; height: 10px; border-radius: 5px;
+        background: #e5302a; }
+.gCell.rec .gDot { display: block; }
+.gCell.rec.cr .gDot { right: 30px; }
+.gCell.sel .gDot { background: #ffffff; }
+.gCell.tiny .gT, .gCell.tiny .gDot { display: none; }
+
+#gNow { position: absolute; top: 128px; width: 2px; height: 352px; margin-left: -1px; background: #f6eee6;
+        display: none; }
+#gScroll { position: absolute; left: 1224px; top: 132px; width: 4px; height: 348px; background: #3b2c25; }
+#gThumb { position: absolute; left: 0; width: 4px; background: #97877b; }
+
+/* Current time under the grid, right-aligned as in the reference layout. */
+#gClock { position: absolute; right: 64px; top: 488px; font-size: 20px; line-height: 26px; color: #c7b6a8; }
+
+/* Details of the focused programme. */
+#gInfo { position: absolute; left: 64px; top: 520px; width: 1152px; height: 168px; background: #1d1310;
+         overflow: hidden; }
+#gPic { position: absolute; left: 0; top: 0; width: 300px; height: 168px; background-color: #2f1c13;
+        background-repeat: no-repeat; background-position: center center; overflow: hidden; }
+#gPicNum { position: absolute; left: 0; top: 36px; width: 300px; text-align: center; font-family: "Texta Bold", sans-serif;
+           font-size: 52px; line-height: 60px; color: #78695f; }
+#gPicName { position: absolute; left: 0; top: 100px; width: 300px; text-align: center; font-size: 22px;
+            line-height: 28px; color: #97877b; white-space: nowrap; overflow: hidden; }
+#gPic.hasImg #gPicNum, #gPic.hasImg #gPicName { display: none; }
+#gText { position: absolute; left: 324px; right: 28px; top: 14px; bottom: 14px; }
+#gTitle { font-size: 30px; line-height: 34px; color: #f6eee6; white-space: nowrap; overflow: hidden;
+          text-overflow: ellipsis; }
+#gBadge { display: none; margin-left: 12px; padding: 0 8px; border-radius: 4px; font-size: 16px; line-height: 24px;
+          vertical-align: 4px; color: #f6eee6; background: #3b2c25; }
+#gBadge.on { display: inline-block; }
+#gBadge.rec { background: #e5302a; }
+#gEpisode { margin-top: 2px; font-size: 20px; line-height: 26px; color: #c7b6a8; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; height: 26px; }
+#gDesc { margin-top: 4px; font-family: "Texta Light", sans-serif; font-size: 20px; line-height: 25px; color: #c7b6a8;
+         height: 50px; overflow: hidden; }
+#gWhen { position: absolute; left: 0; right: 0; bottom: 0; font-family: "Texta Light", sans-serif; font-size: 20px;
+         line-height: 26px; color: #97877b; white-space: nowrap; overflow: hidden; }
+#gWhen b { font-family: "Texta Medium", sans-serif; font-weight: normal; color: #f6eee6; }

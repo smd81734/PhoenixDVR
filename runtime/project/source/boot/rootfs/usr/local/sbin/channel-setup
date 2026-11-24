@@ -1,0 +1,21 @@
+#!/bin/sh
+# Called explicitly by the welcome screen; rescan is a maintenance action.
+set -eu
+case "${1:-firstboot}" in firstboot|rescan) phase=${1:-firstboot};; *) exit 2;; esac
+plan=au
+[ ! -f /mnt/recording-disk/phoenix-pvr/settings/band-plan ] || plan=$(cat /mnt/recording-disk/phoenix-pvr/settings/band-plan)
+case "$plan" in au|eu) ;; *) echo UNSUPPORTED_BAND_PLAN; exit 1;; esac
+mkdir -p /run /data/phoenix
+lock=/run/channel-setup.lock
+if ! mkdir "$lock" 2>/dev/null; then
+ [ ! -L "$lock" ] && [ -d "$lock" ] || exit 1
+ old=$(cat "$lock/pid" 2>/dev/null || true)
+ case "$old" in ''|*[!0-9]*) echo CHANNEL_SETUP_LOCK_INVALID; exit 1;; esac
+ ! kill -0 "$old" 2>/dev/null || { echo CHANNEL_SETUP_ALREADY_RUNNING; exit 1; }
+ rm "$lock/pid"
+ rmdir "$lock" && mkdir "$lock" || exit 1
+fi
+echo $$ > "$lock/pid"
+trap 'rm -f "$lock/pid"; rmdir "$lock"' EXIT
+trap 'exit 1' HUP INT TERM
+python3 -I /data/phoenix/tvheadend/setup.py "$phase" --plan "$plan"

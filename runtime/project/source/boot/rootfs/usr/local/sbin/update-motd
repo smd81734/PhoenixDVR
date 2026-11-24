@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+address=$(ip -4 addr show dev eth0 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
+[ -n "$address" ] || address='<device-ip>'
+sed "s/@DEVICE_IP@/$address/g" /etc/phoenix/motd.template > /etc/motd.new
+mv /etc/motd.new /etc/motd

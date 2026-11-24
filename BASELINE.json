@@ -1,0 +1,10 @@
+{
+  "source_archive": "inputs/installer.zip",
+  "policy": "Import these exact assets from a separately supplied installer archive; do not bundle runtime images with source.",
+  "baseline_files_sha256": {
+    "usb-payload/phoenix/base-rootfs.tar.gz": "9a69cf0b507d766f5bc4403c91ae7f77f4f49bdb1762022c3d650a8234bfac9b",
+    "usb-payload/phoenix/check-busybox": "df4dd71f89214032872e60328f3af03faf35e344f6fa5493656d8775d35e930c",
+    "usb-payload/phoenix/check-ld-musl-armhf.so.1": "2acf3c82bc97b496c40e1d5007d4258570c8df0edc45793d6651a352fb778990",
+    "usb-payload/phoenix/clean-boot-package.tar.gz": "8a6a5588815be097b09a28a37c10b26a2a96e9225dd52445cc4c94c7b866d848"
+  }
+}

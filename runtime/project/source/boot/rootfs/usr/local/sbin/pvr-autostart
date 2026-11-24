@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+[ "$(cat /run/alpine-data-status)" = DATA_MOUNTED_RW ] || exit 1
+[ -e /data/nexus-tuner-manager/enable-autostart ] || { echo MANAGER_DISABLED; exit 0; }
+/usr/local/sbin/recording-disk start || exit 1
+/bin/sh /data/nexus-tuner-manager/autostart.sh || {
+ echo TUNER_START_FAILED > /run/tvheadend-status
+ exit 1
+}
+[ ! -e /run/nexus-tuner-shutdown ] || exit 0
+attempt=0
+until /usr/local/sbin/tvheadend-start >> /var/log/tvheadend-start.log 2>&1; do
+ [ ! -e /run/nexus-tuner-shutdown ] || exit 0
+ attempt=$((attempt+1))
+ [ "$attempt" -lt 3 ] || { echo START_FAILED > /run/tvheadend-status; exit 1; }
+ echo START_RETRY > /run/tvheadend-status
+ sleep 10
+done
+# The welcome screen starts firstboot only after the user presses Start.
+echo PVR_HDD_STARTUP_COMPLETE

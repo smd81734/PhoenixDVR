@@ -1,0 +1,4 @@
+::sysinit:/usr/local/sbin/network-start
+ttyS0::respawn:/bin/sh -i
+::ctrlaltdel:/sbin/reboot
+::shutdown:/usr/local/sbin/data-stop

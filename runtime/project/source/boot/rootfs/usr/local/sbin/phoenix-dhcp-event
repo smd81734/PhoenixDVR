@@ -1,0 +1,13 @@
+#!/bin/sh
+/usr/share/udhcpc/default.script "$@" || exit $?
+case "${1:-}" in
+ bound|renew|deconfig)
+  echo "DHCP_EVENT=$1 UPTIME=$(cut -d ' ' -f 1 /proc/uptime)"
+  /usr/local/sbin/update-motd || :
+  # Never edit config files underneath a running Tvheadend. The supervisor
+  # applies the current prefix offline before launch; later leases use its API.
+  if [ "$(cat /run/tvheadend-status 2>/dev/null)" = RUNNING ]; then
+   /usr/local/sbin/tvheadend-lan --live >> /var/log/tvheadend-lan.log 2>&1 &
+  fi
+  ;;
+esac

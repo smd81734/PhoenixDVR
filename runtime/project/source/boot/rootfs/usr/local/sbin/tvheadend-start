@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+[ ! -e /run/nexus-tuner-shutdown ] || { echo SHUTDOWN_IN_PROGRESS; exit 1; }
+[ ! -e /mnt/recording-disk/phoenix-pvr/settings/disable-tvh-autostart ] || exit 0
+if [ -e /run/tvh-supervisor.pid ]; then
+ p=$(cat /run/tvh-supervisor.pid)
+ kill -0 "$p" 2>/dev/null && { echo TVHEADEND_SUPERVISED; exit 0; }
+ echo 'STOP: stale supervisor state; inspect before retry'; exit 1
+fi
+! pidof tvheadend >/dev/null || { echo 'STOP: unsupervised Tvheadend already running'; exit 1; }
+[ "$(cat /run/alpine-data-status)" = DATA_MOUNTED_RW ]
+/usr/local/sbin/recording-disk start
+# Time recovery runs independently; keep the backend available offline.
+if [ "$(date -u +%Y)" -lt 2026 ]; then
+ echo TVHEADEND_CLOCK_UNSET_STARTING_WITHOUT_SYNC
+fi
+rm -f /run/tvheadend-stop-request
+/bin/sh /usr/local/sbin/tvheadend-supervise </dev/null >/var/log/tvheadend-supervisor.log 2>&1 &
+sleep 2
+[ -f /run/tvh-supervisor.pid ]
+kill -0 "$(cat /run/tvh-supervisor.pid)"
+echo TVHEADEND_SUPERVISOR_STARTED

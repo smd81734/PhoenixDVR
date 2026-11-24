@@ -1,0 +1,12 @@
+#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+if [ -e /mnt/recording-disk/alpine-system/boot/disable-hdmi.txt ]; then
+ echo DISABLED > /run/nexus-display-status
+ exit 0
+fi
+echo STARTING > /run/nexus-display-status
+if ! /usr/local/sbin/nexus-display-start; then
+ echo START_FAILED > /run/nexus-display-status
+ exit 1
+fi
+echo SERVER_RUNNING > /run/nexus-display-status
