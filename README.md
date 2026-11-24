@@ -3,8 +3,7 @@
 Phoenix turns a set-top box with a built-in hard drive back into a working TV
 recorder. Plug in an antenna, and you get live TV you can pause, a programme
 guide, and recordings you can watch, skip through and pick up where you left off.
-It runs entirely on the box in your living room, with no subscription or online
-account.
+It runs entirely on the box in your living room, and can run entirely off-line if you so choose.
 
 ![The Phoenix main menu on the TV](docs/images/main-menu.png)
 
