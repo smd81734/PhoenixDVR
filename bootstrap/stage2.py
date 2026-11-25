@@ -121,7 +121,32 @@ def validate_config(c):
         if not isinstance(c[field],str) or not 1<=len(c[field])<=128 or re.search(r'[\x00-\x1f\x7f]',c[field]):raise ValueError('Invalid password')
     if not isinstance(c['utc_seconds'],int) or not 1767225600<=c['utc_seconds']<=4102444800:raise ValueError('Invalid host time')
     if not isinstance(c['authorized_key'],str) or '\n' in c['authorized_key'] or len(c['authorized_key'])>2048:raise ValueError('Invalid public key')
+    validate_wifi(c)
     return c
+
+def validate_wifi(c):
+    # Optional Wi-Fi: the same rules as phoenix-wifi (WPA2 passphrase 8-63 characters,
+    # 64 hex digits, or empty for an open network).
+    ssid=c.setdefault('wifi_ssid','');password=c.setdefault('wifi_password','')
+    if not isinstance(ssid,str) or not isinstance(password,str):raise ValueError('Invalid Wi-Fi settings')
+    if not ssid:
+        if password:raise ValueError('Invalid Wi-Fi settings')
+        return c
+    if not 1<=len(ssid.encode('utf-8'))<=32 or re.search(r'[\x00-\x1f\x7f]',ssid):raise ValueError('Invalid Wi-Fi network name')
+    if password and (not (8<=len(password)<=63 or re.fullmatch(r'[0-9A-Fa-f]{64}',password)) or re.search(r'[\x00-\x1f\x7f]',password)):raise ValueError('Invalid Wi-Fi password')
+    return c
+
+def write_wifi(disk,config):
+    # Read by phoenix-wifi at boot; root-only and never logged.
+    if not config.get('wifi_ssid'):return False
+    folder=Path(disk)/'phoenix-pvr/settings';folder.mkdir(parents=True,exist_ok=True)
+    value={'enabled':True,'ssid':config['wifi_ssid'],'psk':config['wifi_password'],'security':'wpa2' if config['wifi_password'] else 'open','cipher':'aes','source':'installer'}
+    target=folder/'wifi.json';temporary=folder/'.wifi.json.new'
+    fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    with os.fdopen(fd,'w',encoding='utf-8',newline='\n') as stream:
+        json.dump(value,stream);stream.write('\n');stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,target)
+    return True
 
 def receive_policy():
     event('need-policy',protocol_version=2,message='Waiting for the selected firmware verification policy')
@@ -254,7 +279,7 @@ def main():
     if module_hash is None:raise ValueError('Selected Nexus module missing')
     slots.validate_module(found[module_hash],os.uname().release)
     config=receive_config(model,free)
-    SECRETS.extend([config['root_password'],config['tvh_password']])
+    SECRETS.extend([config['root_password'],config['tvh_password']]+([config['wifi_password']] if config.get('wifi_password') else []))
     public_key=Path('/var/lib/phoenix/operator.pub');public_key.write_text(config['authorized_key']+'\n');prepare.public_keys(public_key)
     # Getpass is driven from validated values in RAM, never shell arguments or files.
     run('date','-u','-s','@'+str(config['utc_seconds']),stdout=subprocess.DEVNULL)
@@ -293,6 +318,8 @@ def main():
     event('progress',message='Committing verified system; retaining existing HDD files')
     retry_step('usb-missing','Reinsert the original prepared USB before committing Phoenix, then Retry.',lambda:ensure_usb(usb_manifest))
     commit_initial(system,DISK,persistence)
+    if write_wifi(DISK,config):event('progress',message='Wi-Fi settings saved for '+config['wifi_ssid'])
+    config.pop('wifi_password',None)
     receipt={'event':'complete','message':('Installation verified; HDD unmounted. Phoenix USB boot is configured.' if ETHERNET else 'Installation verified; HDD unmounted. Recapture BOLT to enable Phoenix boot.'),'package':metadata['package_id'],'ssh_host_fingerprint':metadata['ssh_host_fingerprint'],'hdd_model':model,'boot_trigger':'USB required','hardware_boot_test':'pending','ignore_sha_mismatches':ignore_shas}
     receipt['firmware_slots']=firmware_slots
     finish_committed(work,receipt,expected,usb_manifest,kernel_slot,root_slot)

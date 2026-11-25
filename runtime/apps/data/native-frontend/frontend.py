@@ -18,6 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from epg_settings import EPGSettings
+from wifi_settings import WifiSettings
 
 ROOT = Path('/data/nexus-loader-test-v1')
 BASE = Path('/data/native-frontend')
@@ -38,8 +39,22 @@ def device_info():
         addresses = list(dict.fromkeys(re.findall(r'\binet\s+([0-9.]+)/', result.stdout)))
     except (OSError, subprocess.SubprocessError):
         pass
-    return [('Phoenix version: ' + version, None),
+    rows = [('Phoenix version: ' + version, None),
             ('IP address: ' + (', '.join(addresses) or 'Not connected'), None)]
+    try:
+        result = subprocess.run(['ip', '-4', '-o', 'addr', 'show', 'dev', 'wlan0'],
+                                capture_output=True, text=True, timeout=2)
+        wifi = list(dict.fromkeys(re.findall(r'\bwlan0\s+inet\s+([0-9.]+)/', result.stdout)))
+    except (OSError, subprocess.SubprocessError):
+        wifi = []
+    if wifi:
+        rows.append(('Wi-Fi address: ' + ', '.join(wifi), None))
+    return rows
+
+def system_power_off():
+    """Full shutdown: init runs data-stop (menu, Tvheadend, tuners, display, disk) and halts."""
+    subprocess.Popen(['poweroff'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
 
 def identifier(value):
     if not isinstance(value, str) or not UUID.fullmatch(value):
@@ -119,6 +134,8 @@ class Menu:
         self.booked = set()
         self.playback_active = False
         self.epg_settings = EPGSettings()
+        self.wifi_settings = WifiSettings()
+        self.power_off = system_power_off   # replaced by the HTML controller (LED) and tests
         self.refresh()
 
     def refresh(self):
@@ -129,7 +146,15 @@ class Menu:
                           ('Settings', 'settings')]
         elif self.page == 'settings':
             self.title = 'SETTINGS'
-            self.items = [('Device info', 'device-info'), ('EPG settings', 'epg-settings')]
+            self.items = [('Device info', 'device-info'), ('EPG settings', 'epg-settings'), ('Wi-Fi', 'wifi'),
+                          ('Power off', 'power-off')]
+        elif self.page == 'power-off':
+            self.title = 'POWER OFF'
+            self.items = [('Back', 'back'), ('Power off now', 'confirm')]
+            self.message = ('Recording and the guide stop until the box is switched on again at the wall. '
+                            'For standby with recordings carrying on, use the Power button on the remote.')
+        elif self.page == 'wifi':
+            self.wifi_settings.refresh(self)
         elif self.page.startswith('epg-'):
             self.epg_settings.refresh(self)
         elif self.page == 'device-info':
@@ -191,6 +216,8 @@ class Menu:
         if cmd != 'OK' or not self.items: return
         if self.page.startswith('epg-') and self.epg_settings.command(self, cmd):
             return
+        if self.page == 'wifi' and self.wifi_settings.command(self, cmd):
+            return
         item = self.items[self.selection][1]
         if self.page in ('home', 'settings'):
             self.enter(item)
@@ -218,24 +245,34 @@ class Menu:
             self.message = when(item['start']) + ' - ' + when(item['stop'])
         elif self.page == 'confirm':
             if item == 'back': self.back(); return
-            event = self.pending
-            eid = int(event['eventId'])
-            if eid <= 0 or int(event['stop']) <= time.time(): raise ValueError('Programme has ended')
-            if event.get('dvrUuid') or eid in self.booked:
-                self.message = 'ALREADY SCHEDULED'; return
-            # Recheck server to avoid duplicate bookings after reopening the UI.
-            existing = self.api.rows('dvr/entry/grid_upcoming')
-            if any(int(r.get('start',0)) == int(event['start']) and r.get('channel') == event.get('channelUuid') for r in existing):
-                self.message = 'ALREADY SCHEDULED'; return
-            result = self.api.call('dvr/entry/create_by_event',
-                {'event_id':eid, 'config_uuid':self.config_uuid}, post=True)
-            if result.get('error'): raise ValueError('Tvheadend rejected recording')
-            self.booked.add(eid)
-            self.items = [('Back', 'back')]
-            self.selection = 0
-            self.message = 'RECORDING SCHEDULED'
+            self.message = self.book(self.pending)
+            if self.message == 'RECORDING SCHEDULED':
+                self.items = [('Back', 'back')]
+                self.selection = 0
         elif self.page == 'scheduled':
             self.message = label(item.get('status') or item.get('sched_status') or 'Scheduled')
+        elif self.page == 'power-off':
+            if item == 'back': self.back(); return
+            self.items = []
+            self.message = 'Powering off. To turn the box on again, switch it off and on at the wall.'
+            self.power_off()
+
+    def book(self, event):
+        """Schedule a Tvheadend recording of an EPG event (the menu, the guide's Record key
+        and Record while watching live TV). Returns the message to show."""
+        eid = int(event['eventId'])
+        if eid <= 0 or int(event['stop']) <= time.time(): raise ValueError('Programme has ended')
+        if event.get('dvrUuid') or eid in self.booked:
+            return 'ALREADY SCHEDULED'
+        # Recheck server to avoid duplicate bookings after reopening the UI.
+        existing = self.api.rows('dvr/entry/grid_upcoming')
+        if any(int(r.get('start',0)) == int(event['start']) and r.get('channel') == event.get('channelUuid') for r in existing):
+            return 'ALREADY SCHEDULED'
+        result = self.api.call('dvr/entry/create_by_event',
+            {'event_id':eid, 'config_uuid':self.config_uuid}, post=True)
+        if result.get('error'): raise ValueError('Tvheadend rejected recording')
+        self.booked.add(eid)
+        return 'RECORDING SCHEDULED'
 
     def screen(self, revision):
         start = self.selection // 6 * 6

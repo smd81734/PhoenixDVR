@@ -8,6 +8,8 @@ touch /run/nexus-tuner-shutdown /run/tvheadend-stop-request
 [ ! -f /data/native-frontend/control.sh ] || /bin/sh /data/native-frontend/control.sh stop || exit 1
 /usr/local/sbin/tvheadend-stop || exit 1
 /bin/sh /data/nexus-tuner-manager/control.sh stop || exit 1
+# The Wi-Fi driver must unload before the display server goes (it holds Nexus DMA memory).
+/usr/local/sbin/phoenix-wifi stop >> /var/log/wifi.log 2>&1 || :
 /usr/local/sbin/nexus-display-stop || exit 1
 /usr/local/sbin/phoenix-time save >> /var/log/network-time.log 2>&1 || :
 sync

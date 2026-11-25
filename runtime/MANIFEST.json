@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "id": "phoenix-clean-boot-2026-11-24-preview27",
+  "id": "phoenix-clean-boot-2026-11-26-preview30",
   "rootfs_sha256": "9a69cf0b507d766f5bc4403c91ae7f77f4f49bdb1762022c3d650a8234bfac9b",
   "native": {
     "mkindex": "089cc01598e5d8e147fab01bfe4b000384858e30203a39a61337281e5a496e88",
@@ -8,6 +8,7 @@
     "player-controls.so": "493ac3221320e4f579ebfe4551358d9c78cb0d4a82691fb2c74dd857a0219872",
     "player-status.so": "10bb0840577b83e3a13dbb65275fae1457b97d1d03195159ad078be7029baac9",
     "player-livefile.so": "4a3c539b2c951c4cf223ea85c891faa509b0199c5abbdd14bdaed4f286c6e0d2",
-    "tuner-manager": "21b0b5553103420c475a389e23d035b1561b48be490dad26ae2707474b8aae8f"
+    "tuner-manager": "3f0c338170ea7724178fd0220299dda3883c514f69527f73c47c4f3bffb7e64c",
+    "wifi-dma": "62b2d6b699b83fd6835f710a2afee2179bca3e172295972213496739b325a6a2"
   }
 }

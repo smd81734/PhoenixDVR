@@ -25,6 +25,9 @@ echo ALPINE_NETWORK_STARTUP_FINISHED
 
 /usr/local/sbin/nexus-display-autostart > /var/log/nexus-display-startup.log 2>&1 &
 
+# Wi-Fi (only when set up and on): waits for the display server, then loads the stock driver.
+/usr/local/sbin/phoenix-wifi daemon >> /var/log/wifi.log 2>&1 &
+
 /usr/local/sbin/network-time-start > /var/log/network-time.log 2>&1 &
 
 

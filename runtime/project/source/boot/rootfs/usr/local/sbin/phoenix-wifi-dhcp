@@ -1,0 +1,37 @@
+#!/bin/sh
+# udhcpc event script for wlan0. Routes use metric 600 so Ethernet stays preferred;
+# DNS is taken from Wi-Fi only while Ethernet has no default route.
+run=/run/phoenix-wifi
+mkdir -p "$run"
+case "${1:-}" in
+ deconfig)
+  ip addr flush dev "$interface" 2>/dev/null
+  ip route del default dev "$interface" 2>/dev/null
+  rm -f "$run/dns"
+  ;;
+ bound|renew)
+  ip addr flush dev "$interface"
+  ip addr add "$ip/${mask:-24}" ${broadcast:+broadcast "$broadcast"} dev "$interface"
+  ip route del default dev "$interface" 2>/dev/null
+  for gateway in $router; do
+   ip route add default via "$gateway" dev "$interface" metric 600 && break
+  done
+  printf '%s\n' $dns > "$run/dns"
+  if ! ip route show default | grep -q 'dev eth0'; then
+   : > /etc/resolv.conf.wifi
+   for server in $dns; do echo "nameserver $server" >> /etc/resolv.conf.wifi; done
+   mv /etc/resolv.conf.wifi /etc/resolv.conf
+  fi
+  echo "WIFI_DHCP_EVENT=$1 IP=$ip UPTIME=$(cut -d ' ' -f 1 /proc/uptime)"
+  /usr/local/sbin/update-motd || :
+  # SSH over Wi-Fi too (the boot instance listens on eth0 only).
+  if [ ! -s /run/dropbear-wlan0.pid ] || ! kill -0 "$(cat /run/dropbear-wlan0.pid)" 2>/dev/null; then
+   /usr/sbin/dropbear -E -j -k -l "$interface" -p 22 -P /run/dropbear-wlan0.pid \
+    -r /etc/dropbear/dropbear_ed25519_host_key >> /var/log/dropbear.log 2>&1 || :
+  fi
+  if [ "$(cat /run/tvheadend-status 2>/dev/null)" = RUNNING ]; then
+   /usr/local/sbin/tvheadend-lan --live >> /var/log/tvheadend-lan.log 2>&1 &
+  fi
+  ;;
+esac
+exit 0

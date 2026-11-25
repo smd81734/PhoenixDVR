@@ -1,0 +1,531 @@
+#!/usr/bin/env python3
+"""Phoenix Wi-Fi for the M616T (Broadcom BCM4360, PCI 14e4:43a0).
+
+The box's own stock driver does the work (verified on the DVR, 25 Nov 2026):
+  * wifi-dma (Phoenix, in the vendor chroot) gives the driver its DMA memory and loads
+    wl_pcie.ko; the stock wl tool configures the radio and joins with its built-in WPA2;
+  * udhcpc on wlan0 with routes at metric 600, so Ethernet (metric ~200) stays preferred,
+    and an Ethernet route is withdrawn while its cable is unplugged.
+The stock files are never shipped with Phoenix: alpine-init copies them out of the box's own
+(decrypted) startup image at every boot, and they are checked here by SHA-256.
+
+  phoenix-wifi daemon          run Wi-Fi in the foreground (boot; exits when off/unconfigured)
+  phoenix-wifi start|stop|restart
+  phoenix-wifi status          JSON: state, ssid, ip, rssi, message (never the password)
+  phoenix-wifi import-stock    use the network saved by the old (stock) firmware
+  phoenix-wifi set             JSON {"ssid": ..., "psk": ...} on stdin (installer, menu)
+  phoenix-wifi enable|disable|forget
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+SETTINGS = Path('/mnt/recording-disk/phoenix-pvr/settings/wifi.json')
+CHROOT = Path('/data/nexus-loader-test-v1')
+WIFI_DIR = CHROOT/'opt/wifi'                  # wifi-dma (Phoenix) and the stock driver files
+CAPTURE = Path('/var/lib/stock-wifi')         # copied from the stock initramfs by alpine-init
+RUN = Path('/run/phoenix-wifi')
+STATUS = RUN/'status.json'
+PIDFILE = RUN/'daemon.pid'
+DHCP_SCRIPT = '/usr/local/sbin/phoenix-wifi-dhcp'
+DISPLAY_STATUS = Path('/run/nexus-display-status')
+PCI_DEVICES = Path('/sys/bus/pci/devices')
+PCI_ID = ('0x14e4', '0x43a0')
+NVRAM_PARTITION = Path('/dev/mmcblk0p1')      # Hybroad NVRAM: WIFI_VENDOR=ITON|WNC
+STOCK_SETTINGS_PARTITION = '/dev/mmcblk0p11'  # stock /root, holds hybroad_wifi.ini
+STOCK_SETTINGS_NAME = 'hybroad_wifi.ini'
+LIB_PATH = '/opt/playback-test/lib:/lib'
+# Stock files by SHA-256 (production firmware 3.7.12096; recovered 25 Nov 2026).
+STOCK_FILES = {
+    'wl_pcie.ko': 'd5cb106e00949ebf54bf1c1bcfa71ef90bc90c4309626ab3f33ec8d78e80a12e',
+    'wl': 'be18d7c7f422f76255cfebf226232381165b5e4ee67d31c77984fda208a73bb1',
+    'nvram_iton.txt': 'abb725894927da1a0abe488b991bab53357b3ce41d46235c4f62a3d1dd125302',
+    'nvram_wnc.txt': '78dc2b75a29db2f4ede8448ee1d0c7d4f6f6a4826edacf84cbb941e544e37d41',
+}
+IFACE = 'wlan0'
+METRIC = 600
+ZERO_BSSID = re.compile(r'^(00:){5}00$')
+MAC = re.compile(r'([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})')
+
+
+# ---- Settings ----
+def valid_settings(value):
+    """Clean settings dict or ValueError. Passwords are never logged or returned."""
+    if not isinstance(value, dict):
+        raise ValueError('Settings must be an object')
+    ssid = value.get('ssid')
+    if not isinstance(ssid, str) or not 1 <= len(ssid.encode('utf-8')) <= 32 or re.search(r'[\x00-\x1f\x7f]', ssid):
+        raise ValueError('Network name must be 1 to 32 characters')
+    security = value.get('security', 'wpa2')
+    if security not in ('wpa2', 'wpa', 'open'):
+        raise ValueError('Unsupported Wi-Fi security')
+    psk = value.get('psk', '')
+    if security == 'open':
+        psk = ''
+    elif not isinstance(psk, str) or not (8 <= len(psk) <= 63 or re.fullmatch(r'[0-9A-Fa-f]{64}', psk)) \
+            or re.search(r'[\x00-\x1f\x7f]', psk):
+        raise ValueError('Password must be 8 to 63 characters')
+    cipher = value.get('cipher', 'aes' if security == 'wpa2' else 'tkip')
+    if cipher not in ('aes', 'tkip', 'both'):
+        raise ValueError('Unsupported Wi-Fi cipher')
+    return {'enabled': bool(value.get('enabled', True)), 'ssid': ssid, 'psk': psk, 'security': security,
+            'cipher': cipher, 'source': str(value.get('source', 'menu'))[:16]}
+
+
+def load_settings(path=None):
+    try:
+        return valid_settings(json.loads((path or SETTINGS).read_text(encoding='utf-8')))
+    except (OSError, ValueError):
+        return None
+
+
+def save_settings(value, path=None):
+    path = path or SETTINGS
+    value = valid_settings(value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.wifi-')
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
+            json.dump(value, stream)
+            stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+    return value
+
+
+def parse_stock_settings(text):
+    """hybroad_wifi.ini (key=value lines: ssid, passwd, authmode, encrypttype, ...)."""
+    fields = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition('=')
+        key = key.strip().lower()
+        if sep and key in ('ssid', 'passwd', 'authmode', 'encrypttype') and key not in fields:
+            fields[key] = value.rstrip('\r\n')
+    if not fields.get('ssid'):
+        raise ValueError('The old firmware has no saved Wi-Fi network')
+    auth = fields.get('authmode', '').upper()
+    if 'WEP' in auth:
+        raise ValueError('The saved network uses WEP, which Phoenix does not support')
+    security = 'open' if auth in ('', 'OPEN', 'NONE', 'DISABLED') and not fields.get('passwd') else (
+        'wpa2' if 'WPA2' in auth or not auth else 'wpa')
+    enc = fields.get('encrypttype', '').upper()
+    cipher = 'both' if 'AES' in enc and 'TKIP' in enc else 'tkip' if 'TKIP' in enc else 'aes'
+    return valid_settings({'ssid': fields['ssid'], 'psk': fields.get('passwd', ''), 'security': security,
+                           'cipher': cipher, 'source': 'stock'})
+
+
+def read_stock_settings(partition=STOCK_SETTINGS_PARTITION, run=subprocess.run):
+    """Mount the old firmware's settings partition read-only (no journal replay) and read it."""
+    with tempfile.TemporaryDirectory(prefix='stock-wifi-') as mount:
+        run(['mount', '-t', 'ext4', '-o', 'ro,noload', partition, mount], check=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        try:
+            text = (Path(mount)/STOCK_SETTINGS_NAME).read_text(encoding='utf-8', errors='replace')
+        finally:
+            run(['umount', mount], check=False, timeout=20)
+    return parse_stock_settings(text)
+
+
+# ---- Hardware and stock files ----
+def hardware_present(devices=PCI_DEVICES):
+    try:
+        for device in devices.iterdir():
+            ids = ((device/'vendor').read_text().strip(), (device/'device').read_text().strip())
+            if ids == PCI_ID:
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(1 << 20), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def prepare_files(capture=CAPTURE, target=WIFI_DIR):
+    """Make sure the chroot's /opt/wifi holds the verified stock files. Returns missing names."""
+    target.mkdir(parents=True, exist_ok=True)
+    missing = []
+    for name, expected in STOCK_FILES.items():
+        dest = target/name
+        if dest.is_file() and sha256(dest) == expected:
+            continue
+        source = capture/name
+        if source.is_file() and sha256(source) == expected:
+            temporary = dest.with_name(dest.name + '.new')
+            shutil.copyfile(source, temporary)
+            os.chmod(temporary, 0o755 if name == 'wl' else 0o644)
+            os.replace(temporary, dest)
+        else:
+            missing.append(name)
+    return missing
+
+
+def wifi_vendor(partition=NVRAM_PARTITION):
+    try:
+        with open(partition, 'rb') as stream:
+            match = re.search(rb'WIFI_VENDOR=([A-Za-z]+)', stream.read(1 << 20))
+    except OSError:
+        match = None
+    return 'wnc' if match and match.group(1).upper() == b'WNC' else 'iton'
+
+
+# ---- Status ----
+def write_status(state, message='', **extra):
+    RUN.mkdir(parents=True, exist_ok=True)
+    data = {'state': state, 'message': message, 'time': int(time.time())}
+    data.update(extra)
+    temporary = STATUS.with_name('status.new')
+    temporary.write_text(json.dumps(data) + '\n')
+    os.replace(temporary, STATUS)
+    print('WIFI_STATE=' + state.upper() + (' ' + message if message else ''), flush=True)
+
+
+def read_status():
+    try:
+        data = json.loads(STATUS.read_text())
+    except (OSError, ValueError):
+        data = {'state': 'off'}
+    if data.get('state') not in ('off', 'unavailable') and not daemon_pid():
+        data = {'state': 'off'}
+    settings = load_settings()
+    data['configured'] = bool(settings)
+    data['enabled'] = bool(settings and settings['enabled'])
+    data.setdefault('ssid', settings['ssid'] if settings else '')
+    data['hardware'] = hardware_present()
+    return data
+
+
+def daemon_pid():
+    try:
+        pid = int(PIDFILE.read_text())
+        os.kill(pid, 0)
+        cmdline = Path('/proc/%d/cmdline' % pid).read_bytes()
+        return pid if b'phoenix-wifi' in cmdline and b'daemon' in cmdline else None
+    except (OSError, ValueError):
+        return None
+
+
+# ---- Radio ----
+class Radio:
+    """Driver lifetime and the stock wl tool (all commands as separate argv, no shell)."""
+
+    def __init__(self, run=subprocess.run, popen=subprocess.Popen, wl=None):
+        self.run, self.popen = run, popen
+        self.wl_path = str(wl or WIFI_DIR/'wl')
+        self.helper = None
+        self.dhcp = None
+
+    def wl(self, *args, check=False, quiet=False):
+        result = self.run([self.wl_path, '-i', IFACE] + list(args), capture_output=True, text=True, timeout=20)
+        if result.returncode and not quiet:
+            print('WL_FAILED ' + str(args[0]) + ' RC=' + str(result.returncode), flush=True)
+        if check and result.returncode:
+            raise RuntimeError('wl ' + str(args[0]) + ' failed')
+        return result.stdout
+
+    def ip(self, *args, check=True):
+        return self.run(['ip'] + list(args), check=check, capture_output=True, text=True, timeout=10)
+
+    def load(self, vendor, timeout=60):
+        if Path('/sys/class/net/' + IFACE).exists():
+            return True   # driver already loaded (e.g. daemon restarted)
+        nvram = WIFI_DIR/('nvram_%s.txt' % vendor)
+        for copy in (WIFI_DIR/'nvram.txt', CHROOT/'var/run/nvram.txt'):
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(nvram, copy)
+
+        def enter():
+            os.chroot(str(CHROOT))
+            os.chdir('/opt/wifi')
+            os.setsid()
+        env = {k: v for k, v in os.environ.items() if k not in ('LD_PRELOAD', 'LD_LIBRARY_PATH')}
+        self.helper = self.popen(['/lib/ld-linux-armhf.so.3', '--library-path', LIB_PATH, '/opt/wifi/wifi-dma',
+                                  '/opt/wifi/wl_pcie.ko'], preexec_fn=enter, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        (RUN/'helper.pid').write_text(str(self.helper.pid) + '\n')
+        deadline = time.monotonic() + timeout
+        import select
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([self.helper.stdout], [], [], 1.0)
+            if not ready:
+                if self.helper.poll() is not None:
+                    break
+                continue
+            line = self.helper.stdout.readline()
+            if not line:
+                break
+            print('WIFI_DMA ' + line.strip(), flush=True)
+            if line.startswith('WIFI_DMA_HELD'):
+                break
+        if self.helper.poll() is not None:
+            return False
+        for _ in range(100):
+            if Path('/sys/class/net/' + IFACE).exists():
+                return True
+            time.sleep(0.1)
+        return False
+
+    def factory_mac(self):
+        match = MAC.search(self.wl('rdvar', 'macaddr', quiet=True) or '')
+        return match.group(1).lower() if match and match.group(1) != '00:00:00:00:00:00' else None
+
+    def configure(self, settings):
+        """The stock M616T station sequence (libzebra yhw_bcmwlan_init/connectAP)."""
+        mac = self.factory_mac()
+        self.ip('link', 'set', IFACE, 'down', check=False)
+        if mac:
+            self.ip('link', 'set', IFACE, 'address', mac, check=False)
+        for args in (('spect', '0'), ('mpc', '0'), ('country', 'AU'), ('up',)):
+            self.wl(*args)
+        self.ip('link', 'set', IFACE, 'up', check=False)
+        for args in (('down',), ('apsta', '0'), ('ap', '0'), ('txchain', '7'), ('rxchain', '7'), ('up',)):
+            self.wl(*args)
+
+    def join(self, settings):
+        if settings['security'] == 'open':
+            self.wl('sup_wpa', '0'); self.wl('wsec', '0')
+            self.wl('join', settings['ssid'])
+            return
+        self.wl('sup_wpa', '1')
+        self.wl('wsec', {'aes': '4', 'tkip': '2', 'both': '6'}[settings['cipher']])
+        self.wl('set_pmk', settings['psk'], quiet=True)
+        self.wl('join', settings['ssid'], 'amode', 'wpa2psk' if settings['security'] == 'wpa2' else 'wpapsk')
+
+    def associated(self):
+        out = (self.wl('bssid', quiet=True) or '').strip()
+        return bool(MAC.fullmatch(out)) and not ZERO_BSSID.match(out)
+
+    def rssi(self):
+        try:
+            return int((self.wl('rssi', quiet=True) or '').split()[0])
+        except (IndexError, ValueError):
+            return None
+
+    def start_dhcp(self):
+        self.stop_dhcp()
+        self.dhcp = self.popen(['udhcpc', '-i', IFACE, '-s', DHCP_SCRIPT, '-p', str(RUN/'udhcpc.pid'), '-f',
+                                '-t', '6', '-T', '3', '-A', '10'], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def stop_dhcp(self):
+        if self.dhcp is not None and self.dhcp.poll() is None:
+            self.dhcp.terminate()
+            try:
+                self.dhcp.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.dhcp.kill()
+        self.dhcp = None
+
+    def address(self):
+        out = self.ip('-4', '-o', 'addr', 'show', 'dev', IFACE, check=False).stdout or ''
+        match = re.search(r'\binet\s+([0-9.]+)/', out)
+        return match.group(1) if match else ''
+
+    def shutdown(self):
+        """wlan0 down and the driver unloaded before the DMA memory goes (never SIGKILL)."""
+        self.stop_dhcp()
+        if Path('/sys/class/net/' + IFACE).exists():
+            self.wl('disassoc', quiet=True)
+            self.ip('addr', 'flush', 'dev', IFACE, check=False)
+            self.ip('link', 'set', IFACE, 'down', check=False)
+        helper = self.helper
+        if helper is None:
+            try:
+                pid = int((RUN/'helper.pid').read_text())
+                os.kill(pid, signal.SIGTERM)
+                for _ in range(200):
+                    os.kill(pid, 0)
+                    time.sleep(0.1)
+                print('WIFI_DMA_STILL_RUNNING PID=%d (driver busy; memory kept)' % pid, flush=True)
+            except (OSError, ValueError):
+                pass
+            return
+        if helper.poll() is None:
+            helper.send_signal(signal.SIGTERM)
+            try:
+                helper.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                print('WIFI_DMA_STILL_RUNNING PID=%d (driver busy; memory kept)' % helper.pid, flush=True)
+                return
+        (RUN/'helper.pid').unlink(missing_ok=True)
+
+
+# ---- Ethernet first ----
+def carrier(name='eth0'):
+    try:
+        return Path('/sys/class/net/%s/carrier' % name).read_text().strip() == '1'
+    except OSError:
+        return False
+
+
+def default_routes(run=subprocess.run):
+    out = run(['ip', 'route', 'show', 'default'], capture_output=True, text=True, timeout=5).stdout or ''
+    return {m.group(1) for m in re.finditer(r'\bdev\s+(\S+)', out)}
+
+
+def ethernet_first(run=subprocess.run, eth_carrier=None):
+    """Withdraw eth0's default route while its cable is out; ask its DHCP client to renew
+    (restoring the route) when the cable is back. Wi-Fi routes use metric 600 meanwhile."""
+    up = carrier() if eth_carrier is None else eth_carrier
+    routes = default_routes(run)
+    if not up and 'eth0' in routes:
+        run(['ip', 'route', 'del', 'default', 'dev', 'eth0'], check=False, timeout=5)
+        use_wifi_dns()
+        print('ETHERNET_UNPLUGGED DEFAULT_ROUTE=WIFI', flush=True)
+        return 'wifi'
+    if up and 'eth0' not in routes:
+        try:
+            os.kill(int(Path('/var/run/udhcpc.eth0.pid').read_text()), signal.SIGUSR1)
+            print('ETHERNET_BACK RENEW_REQUESTED', flush=True)
+        except (OSError, ValueError):
+            pass
+        return 'ethernet'
+    return None
+
+
+def use_wifi_dns():
+    try:
+        servers = (RUN/'dns').read_text().split()
+    except OSError:
+        return
+    if servers:
+        Path('/etc/resolv.conf').write_text(''.join('nameserver %s\n' % s for s in servers[:3]))
+
+
+# ---- Daemon ----
+def daemon(radio=None):
+    RUN.mkdir(parents=True, exist_ok=True)
+    if not hardware_present():
+        write_status('unavailable', 'No Wi-Fi hardware'); return 0
+    settings = load_settings()
+    if not settings or not settings['enabled']:
+        write_status('off', 'Wi-Fi is off' if settings else 'Not set up'); return 0
+    if daemon_pid() not in (None, os.getpid()):
+        print('WIFI_ALREADY_RUNNING', flush=True); return 0
+    PIDFILE.write_text(str(os.getpid()) + '\n')
+    stopping = []
+    signal.signal(signal.SIGTERM, lambda *_: stopping.append(1))
+    signal.signal(signal.SIGINT, lambda *_: stopping.append(1))
+    radio = radio or Radio()
+    try:
+        write_status('starting', 'Waiting for the display server', ssid=settings['ssid'])
+        for _ in range(240):
+            if stopping or DISPLAY_STATUS.exists() and DISPLAY_STATUS.read_text().strip() == 'SERVER_RUNNING':
+                break
+            time.sleep(0.5)
+        missing = prepare_files()
+        if missing:
+            write_status('error', 'Wi-Fi driver files not found', ssid=settings['ssid'])
+            print('WIFI_FILES_MISSING ' + ' '.join(missing), flush=True); return 1
+        if stopping:
+            return 0
+        if not radio.load(wifi_vendor()):
+            write_status('error', 'The Wi-Fi driver did not start', ssid=settings['ssid']); return 1
+        radio.configure(settings)
+        lost, last_join = 99, 0.0
+        while not stopping:
+            if radio.associated():
+                if lost:
+                    write_status('connecting', 'Getting an address', ssid=settings['ssid'])
+                    radio.start_dhcp()
+                lost = 0
+                address = radio.address()
+                write_status('connected' if address else 'connecting', '' if address else 'Getting an address',
+                             ssid=settings['ssid'], ip=address, rssi=radio.rssi())
+            else:
+                lost += 1
+                if lost >= 3 and time.monotonic() - last_join > 20:
+                    if radio.dhcp is not None:
+                        radio.stop_dhcp()
+                        radio.ip('addr', 'flush', 'dev', IFACE, check=False)
+                    write_status('connecting', 'Joining ' + settings['ssid'], ssid=settings['ssid'])
+                    radio.join(settings)
+                    last_join = time.monotonic()
+            ethernet_first()
+            for _ in range(10):
+                if stopping:
+                    break
+                time.sleep(0.5)
+        return 0
+    finally:
+        radio.shutdown()
+        write_status('off', 'Wi-Fi is off')
+        PIDFILE.unlink(missing_ok=True)
+
+
+def start():
+    if daemon_pid():
+        return 0
+    RUN.mkdir(parents=True, exist_ok=True)
+    log = open('/var/log/wifi.log', 'a')
+    subprocess.Popen([sys.executable, '-I', str(Path(__file__).resolve()), 'daemon'], stdin=subprocess.DEVNULL,
+                     stdout=log, stderr=log, start_new_session=True, close_fds=True)
+    return 0
+
+
+def stop(timeout=40):
+    pid = daemon_pid()
+    if not pid:
+        return 0
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(timeout * 10):
+        if not daemon_pid():
+            return 0
+        time.sleep(0.1)
+    print('WIFI_STOP_TIMEOUT', flush=True)
+    return 1
+
+
+def main(argv):
+    command = argv[1] if len(argv) > 1 else 'status'
+    if command == 'daemon':
+        return daemon()
+    if command == 'start':
+        return start()
+    if command == 'stop':
+        return stop()
+    if command == 'restart':
+        stop(); return start()
+    if command == 'status':
+        print(json.dumps(read_status())); return 0
+    if command in ('import-stock', 'set', 'enable', 'disable', 'forget'):
+        try:
+            if command == 'import-stock':
+                saved = save_settings(read_stock_settings())
+            elif command == 'set':
+                saved = save_settings(dict(json.loads(sys.stdin.read(4096)), source='installer'))
+            elif command == 'forget':
+                stop(); SETTINGS.unlink(missing_ok=True)
+                print(json.dumps({'ok': True})); return 0
+            else:
+                current = load_settings()
+                if not current:
+                    raise ValueError('Wi-Fi is not set up')
+                saved = save_settings(dict(current, enabled=command == 'enable'))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            message = str(exc) if isinstance(exc, ValueError) else 'Could not read the saved Wi-Fi settings'
+            print(json.dumps({'ok': False, 'message': message})); return 1
+        print(json.dumps({'ok': True, 'ssid': saved['ssid'], 'enabled': saved['enabled']}))
+        return 0
+    print(__doc__, file=sys.stderr)
+    return 64
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

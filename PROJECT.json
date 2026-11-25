@@ -1,6 +1,6 @@
 {
   "project": "Phoenix Windows Device Setup",
-  "version": "0.2.1-preview21",
+  "version": "2026.11.26-preview30",
   "implementation": "C# WinForms / .NET Framework; Python and shell target bootstrap",
   "usb_protocol_version": 5,
   "firmware_slots": [

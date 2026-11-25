@@ -14,6 +14,7 @@
     var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
     var api = null, shown = false, started = false;
+    var noteCell = null, noteText = '', noteUntil = 0;   // "Recording scheduled" on a cell
     var windows = {}, windowOrder = [], loading = {};
     var chans = [], offset = 0, slot = 1800, span = 7200, skew = 0;
     var row = 0, top = 0, win = 0, anchor = 0;
@@ -242,7 +243,8 @@
         }
         var t = nowT(), mins = Math.round((c.stop - c.start) / 60);
         $('gTitleText').textContent = c.title;
-        if (c.rec) { badge.textContent = 'RECORDING'; badge.className = 'on rec'; }
+        if (noteCell === c && new Date().getTime() < noteUntil) { badge.textContent = noteText; badge.className = 'on rec'; }
+        else if (c.rec) { badge.textContent = 'RECORDING'; badge.className = 'on rec'; }
         else if (c.start <= t && t < c.stop) { badge.textContent = 'ON NOW'; badge.className = 'on'; }
         $('gEpisode').textContent = c.episode || '';
         $('gDesc').textContent = c.desc || '';
@@ -307,6 +309,20 @@
         key: function (cmd) {
             if (!shown) { return false; }
             if (cmd === 'BACK') { api.back(); return true; }
+            if (cmd === 'RECORD') {
+                // Record key: book the focused programme at once (the cell gets its badge).
+                var rc = focused();
+                if (rc && !rc.kind && chans.length && api.record) {
+                    api.record(chans[row].uuid, rc.id, function (res) {
+                        if (res && res.ok) { rc.rec = true; }
+                        noteCell = rc; noteText = (res && res.message) || 'Could not schedule';
+                        noteUntil = new Date().getTime() + 4000;
+                        draw();
+                        window.setTimeout(function () { if (shown) { draw(); } }, 4100);
+                    });
+                }
+                return true;
+            }
             if (cmd === 'OK') {
                 var c = focused();
                 if (c && !c.kind && chans.length) { api.select(chans[row].uuid, c.id); }

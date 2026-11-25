@@ -112,6 +112,25 @@ body.playback #osd.show { opacity: 1; }
 #osdScrub { display: none; position: absolute; top: 108px; width: 160px; text-align: center;
             font-size: 26px; line-height: 32px; color: #f6eee6; }
 #osd.scrub #osdTarget, #osd.scrub #osdScrub { display: block; }
+/* Live TV: channel above the programme title, what is on next under the bar. */
+#osdChan { position: absolute; left: 64px; top: 50px; width: 900px; font-size: 24px; line-height: 28px;
+           color: #c7b6a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#osdChan.icon { left: 188px; width: 776px; }
+#osdChan b { color: #f6eee6; font-weight: normal; margin-right: 14px; }
+#osdChan i { font-style: normal; color: #ff5a3c; margin-left: 14px; }
+#osdNext { position: absolute; left: 64px; top: 206px; width: 1152px; font-family: "Texta Light", sans-serif;
+           font-size: 22px; line-height: 26px; color: #c7b6a8; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+#osdNext b { font-family: "Texta Medium", sans-serif; font-weight: normal; color: #f6eee6; margin-right: 12px; }
+/* Number entry and short notices (Recording ..., No channel 47), top right. */
+#keys { display: none; position: absolute; right: 64px; top: 140px; min-width: 120px; max-width: 640px;
+        padding: 12px 22px; background: rgba(0,0,0,0.8); border-radius: 6px; text-align: right;
+        font-size: 30px; line-height: 36px; color: #f6eee6; white-space: nowrap; overflow: hidden; }
+#keys.digits { font-size: 48px; line-height: 56px; letter-spacing: 4px; }
+body.playback #keys.show { display: block; }
+/* Standby: nothing on screen (the power LED shows standby). */
+html.standby, body.standby { background: #000; }
+body.standby > * { display: none !important; }
 /* Volume indicator, top right, for a few seconds after a volume key. */
 #vol { display: none; position: absolute; right: 64px; top: 48px; width: 320px; height: 76px;
        background: rgba(0,0,0,0.8); border-radius: 6px; }
@@ -189,10 +208,11 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
     </div>
   </div>
 </div>
-<div id="osd"><div id="osdIcon"></div><div id="osdTitle"></div><div id="osdState"></div>
+<div id="osd"><div id="osdIcon"></div><div id="osdChan"></div><div id="osdTitle"></div><div id="osdState"></div>
   <div id="osdBar"><div id="osdFill"></div><div id="osdThumb"></div><div id="osdTarget"></div></div>
   <div id="osdScrub"></div>
-  <div id="osdTime"></div><div id="osdEnd"></div></div>
+  <div id="osdTime"></div><div id="osdEnd"></div><div id="osdNext"></div></div>
+<div id="keys"></div>
 <div id="vol"><div id="volLabel">Volume</div><div id="volValue"></div><div id="volBars"></div></div>
 <script src="/guide.js"></script>
 <script>
@@ -210,6 +230,12 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
         13: 'OK', 1073741994: 'OK', 170: 'OK',
         213: 'BACK', 8: 'BACK', 27: 'BACK', 461: 'BACK', 166: 'BACK', 10009: 'BACK'
     };
+    // Remote keys from the stock UI's own key map (same browser): numbers, CH+/-, Record,
+    // Info and Power (93 toggles; 91/92 are discrete on/off).
+    var LIVE_KEYS = { 1073741869: 'CH_UP', 1073741867: 'CH_DOWN', 210: 'RECORD', 209: 'INFO',
+                      33: 'CH_UP', 34: 'CH_DOWN' };
+    var POWER_KEYS = { 93: 'TOGGLE', 91: 'ON', 92: 'OFF' };
+    var GUIDE_KEYS = { 224: 1, 458: 1 };   // stock KEY_GUIDE; 458 = standard HbbTV Guide
     var LIVE_PAUSE_KEYS = { 1073741994: 1, 13: 1, 40: 1, 37: 1, 412: 1, 19: 1, 179: 1, 415: 1 };
     var NAMES = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
                   Up: 'UP', Down: 'DOWN', Left: 'LEFT', Right: 'RIGHT', Enter: 'OK',
@@ -333,8 +359,9 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
             return;
         }
         view = next;
-        document.body.className = view.setup ? 'setup' : (view.playback ? 'playback' : '');
-        document.documentElement.className = view.playback ? 'playback' : '';
+        document.body.className = view.standby ? 'standby' : (view.setup ? 'setup' : (view.playback ? 'playback' : ''));
+        document.documentElement.className = view.standby ? 'standby' : (view.playback ? 'playback' : '');
+        if (view.standby) { if (window.Guide) { window.Guide.hide(); } return; }
         if (view.setup) {
             if (window.Guide) { window.Guide.hide(); }
             setText('title', 'Welcome'); setText('subtitle', 'Let’s get your channels ready'); setText('clock', view.clock);
@@ -431,8 +458,13 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
         var state = !st ? 'Loading' : st.rate === 0 || st.state === 2 ? '❚❚  Paused' :
             st.rate > 1000 ? '▶▶  x' + st.rate / 1000 :
             st.rate < 0 ? '◀◀  x' + (-st.rate / 1000) : '▶';
-        setText('osdTitle', p.title || '');
-        setIcon('osdIcon', p.live && p.icon || '', function (on) { $('osdTitle').className = on ? 'icon' : ''; });
+        if (p.osd !== lastOsd) { if (lastOsd !== null) { osdUntil = Math.max(osdUntil, now + 5000); } lastOsd = p.osd; }
+        var prog = p.live && p.now ? p.now : null;
+        setText('osdTitle', prog ? prog.title : (p.channel_name || p.title || ''));
+        renderChannel(p);
+        setIcon('osdIcon', p.live && p.icon || '', function (on) {
+            $('osdTitle').className = on ? 'icon' : ''; $('osdChan').className = on ? 'icon' : '';
+        });
         setText('osdState', state);
         var pos = st ? st.pos / 1000 : 0, dur = p.duration || 0;
         if (p.live && p.starting) {
@@ -452,8 +484,18 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
             $('osdThumb').style.left = Math.round(1152 * (at - from) / span) + 'px';
         } else if (p.live) {
             if (p.mode === 'relay') { setText('osdState', ''); }   // direct live feed: no player status
-            setText('osdTime', 'LIVE'); setText('osdEnd', '');
-            $('osdBar').style.visibility = 'hidden';
+            if (prog && prog.stop > prog.start) {
+                // Direct live feed: the bar is how far the programme on now has got.
+                var f = Math.max(0, Math.min(1, (now / 1000 - prog.start) / (prog.stop - prog.start)));
+                setText('osdTime', 'LIVE   ' + prog.times);
+                setText('osdEnd', Math.max(0, Math.round((prog.stop - now / 1000) / 60)) + ' min left');
+                $('osdBar').style.visibility = 'visible';
+                $('osdFill').style.width = Math.round(1152 * f) + 'px';
+                $('osdThumb').style.left = Math.round(1152 * f) + 'px';
+            } else {
+                setText('osdTime', 'LIVE'); setText('osdEnd', '');
+                $('osdBar').style.visibility = 'hidden';
+            }
         } else {
             setText('osdTime', hms(pos));
             setText('osdEnd', dur ? hms(dur) : '');
@@ -462,8 +504,47 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
             $('osdFill').style.width = Math.round(1152 * frac) + 'px';
             $('osdThumb').style.left = Math.round(1152 * frac) + 'px';
         }
-        $('osd').className = (trick || now < osdUntil) ? 'show' : '';
+        $('osd').className = (trick || now < osdUntil || p.digits) ? 'show' : '';
         renderExtras(p, st, pos, dur);
+        renderKeys(p);
+    }
+
+    // Channel line (number, name, recording mark) and what is on next, for live TV.
+    var lastOsd = null;
+    function renderChannel(p) {
+        var chan = $('osdChan'), next = $('osdNext');
+        while (chan.firstChild) { chan.removeChild(chan.firstChild); }
+        while (next.firstChild) { next.removeChild(next.firstChild); }
+        if (!p.live) { return; }
+        var b = document.createElement('b');
+        b.textContent = p.number || '';
+        chan.appendChild(b);
+        chan.appendChild(document.createTextNode(p.channel_name || (p.now ? p.title : '') || ''));
+        if (p.now && p.now.rec) {
+            var rec = document.createElement('i');
+            rec.textContent = '● RECORDING';
+            chan.appendChild(rec);
+        }
+        if (p.next) {
+            var label = document.createElement('b');
+            label.textContent = 'Next  ' + p.next.start_time;
+            next.appendChild(label);
+            next.appendChild(document.createTextNode(p.next.title));
+        }
+    }
+
+    // Typed channel number ("2_") or a short notice, top right.
+    function renderKeys(p) {
+        var box = $('keys');
+        if (p.digits) {
+            box.textContent = p.digits + (p.digits.length < 3 ? '_' : '');
+            box.className = 'show digits';
+        } else if (p.notice) {
+            box.textContent = p.notice;
+            box.className = 'show';
+        } else {
+            box.className = '';
+        }
     }
 
     // Paused scrub target (player-status SCRUB=, ms, -1 none) and the volume indicator.
@@ -528,6 +609,38 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
         var code = event.keyCode || event.which || 0;
         var command = KEYS[code] || NAMES[event.key] || NAMES[event.keyIdentifier];
         request('POST', '/api/key', { code: code, key: event.key || event.keyIdentifier || '' }, null);
+        var power = POWER_KEYS[code];
+        if (power && view && !event.repeat) {
+            event.preventDefault();
+            if (power === 'TOGGLE' || (power === 'ON') === !!view.standby) {
+                request('POST', '/api/power', { toggle: 1 }, function (data) { if (data) { render(data); } });
+            }
+            return;
+        }
+        if (view && view.standby) { event.preventDefault(); return; }   // asleep: only Power
+        if (GUIDE_KEYS[code] && view && !view.setup) {
+            event.preventDefault();
+            if (!event.repeat && !(window.Guide && window.Guide.visible())) {
+                request('POST', '/api/guide-key', { open: 1 }, function (data) { if (data) { render(data); } });
+            }
+            return;
+        }
+        var liveKey = LIVE_KEYS[code] || (code >= 48 && code <= 57 ? 'D' + (code - 48) : '');
+        if (liveKey && view && view.playback) {
+            event.preventDefault();
+            if (!event.repeat || liveKey === 'CH_UP' || liveKey === 'CH_DOWN') {
+                request('POST', '/api/live-key', { key: liveKey }, function (data) {
+                    if (data && data.playback) { view = data; renderOsd(data); }
+                    else if (data) { render(data); }
+                });
+            }
+            return;
+        }
+        if (liveKey === 'RECORD' && window.Guide && window.Guide.visible()) {
+            event.preventDefault();
+            if (!event.repeat && !busy) { window.Guide.key('RECORD'); }
+            return;
+        }
         // Watching the direct live feed: Pause, OK, Down or Left/Rewind switches to the pause buffer.
         if (view && view.playback && view.playing && view.playing.live && view.playing.mode === 'relay' &&
             LIVE_PAUSE_KEYS[code] && !event.repeat) {
@@ -561,6 +674,10 @@ body.setup #list, body.setup #meta, body.setup #pager, body.setup #hints { displ
         window.Guide.init({
             request: request,
             back: function () { send('BACK'); },
+            record: function (channel, eventId, done) {
+                if (busy || !view || view.playback) { return; }
+                request('POST', '/api/guide-record', { revision: view.revision, channel: channel, event: eventId }, done);
+            },
             select: function (channel, eventId) {
                 if (busy || !view || view.playback) { return; }
                 busy = true;

@@ -24,6 +24,14 @@ done < /proc/mounts
 (cd "$ROOT" && "$BB" tar -xzf /alpine.tar.gz) || fail extract
 "$BB" chroot "$ROOT" /bin/busybox sh -c 'test "$(cat /etc/alpine-release)" = 3.24.3' || fail release
 "$BB" mkdir -p "$ROOT/proc" "$ROOT/sys" "$ROOT/dev" "$ROOT/usr/local/bin" || fail directories
+# The box's own Wi-Fi driver and tools exist only in this (stock, decrypted) startup image,
+# which switch_root empties. Copy them to the RAM root for phoenix-wifi, which checks them
+# by SHA-256. Never stops the boot.
+if "$BB" mkdir -p "$ROOT/var/lib/stock-wifi"; then
+ for f in /home/hybroad/lib/wl_pcie.ko /home/hybroad/bin/wl /home/hybroad/bin/nvram_iton.txt /home/hybroad/bin/nvram_wnc.txt; do
+  [ -f "$f" ] && "$BB" cp "$f" "$ROOT/var/lib/stock-wifi/" 2>/dev/null
+ done
+fi
 "$ROOT/lib/ld-musl-armhf.so.1" --library-path "$ROOT/lib" "$ROOT/bin/busybox" echo ALPINE_LOADER_OK || fail loader
 cd / || fail cd
 "$BB" mount -o move /sys "$ROOT/sys" || fail move-sys

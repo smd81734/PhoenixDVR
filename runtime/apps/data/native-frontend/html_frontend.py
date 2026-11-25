@@ -71,6 +71,14 @@ BASE = native.BASE
 PORT = 9993
 ROWS = 6
 COMMANDS = ('UP', 'DOWN', 'LEFT', 'RIGHT', 'OK', 'BACK')
+# Remote keys handled while something plays (the page sends them to /api/live-key).
+LIVE_KEYS = ('CH_UP', 'CH_DOWN', 'RECORD', 'INFO') + tuple('D' + str(n) for n in range(10))
+DIGIT_WAIT = 2.0          # seconds after the last number key before changing channel
+CHANNEL_WAIT = 1.5        # seconds after the last CH+/CH- before tuning (lets the viewer step through)
+NOTICE_SECONDS = 4        # overlay notices ("Recording ...", "No channel 47")
+PROGRAMME_SECONDS = 300   # now/next cache per channel (refreshed sooner when a programme ends)
+STANDBY_FILE = Path('/mnt/recording-disk/phoenix-pvr/settings/standby')
+CHANNEL_PATH = re.compile(r'^/stream/channel/([0-9a-f]{32})')
 # Texta fonts copied from the stock UI release; served read-only to the menu page.
 FONTS = {'/fonts/' + n: n for n in ('Texta-Medium.ttf', 'Texta-Light.ttf', 'Texta-Bold.ttf')}
 FONT_DIR = Path(__file__).with_name('fonts')
@@ -105,6 +113,15 @@ def clock():
     import datetime as dt
     try:
         return dt.datetime.now(native.local_zone()).strftime('%a %d %b  %H:%M')
+    except Exception:
+        return ''
+
+
+def hhmm(when):
+    """Local HH:MM for an epoch time ('' when the zone is missing)."""
+    import datetime as dt
+    try:
+        return dt.datetime.fromtimestamp(int(when), native.local_zone()).strftime('%H:%M')
     except Exception:
         return ''
 
@@ -233,6 +250,296 @@ class Controller:
         self.positions_file = None   # resume positions (None: POSITIONS)
         self.resume_ms = 0           # start point chosen on the resume page
         self.last_status = None      # last player status seen, saved as the resume point
+        # Remote keys during playback, channel changes and standby.
+        self.interrupt = threading.Event()  # ends the current playback (channel change, standby)
+        self.next_play = None        # (stream, item) to start as soon as the current one ends
+        self.digits, self.digits_at, self.digit_timer = '', 0.0, None
+        self.channel_pick, self.channel_pick_at, self.channel_timer = None, 0.0, None
+        self.after_play = None       # 'guide': open the guide when playback ends (Guide key)
+        self.notice, self.notice_until = '', 0.0
+        self.osd_seq = 0             # bumped when the overlay should show (Info, channel change)
+        self.programmes = {}         # channel uuid -> (loaded_at, [now, next] events)
+        self.programmes_loading = set()
+        self.standby_file = STANDBY_FILE
+        self.standby = False
+        self.led = manager_led       # front-panel LED setter (replaced in tests)
+        menu.power_off = self._power_off
+
+    def restore_standby(self):
+        """Come back in standby after a restart if the box was in standby (as the stock UI)."""
+        try:
+            self.standby = self.standby_file.read_text().strip() == '1'
+        except OSError:
+            self.standby = False
+        self._set_led('power', 'standby' if self.standby else 'on')
+        if self.standby:
+            print('STANDBY_RESTORED', flush=True)
+
+    def _power_off(self):
+        """Settings > Power off (lock held): LEDs off, then a full shutdown."""
+        print('POWER_OFF_REQUESTED', flush=True)
+        for name in ('recording', 'internet', 'power'):
+            self.led(name, 'off')
+        native.system_power_off()
+
+    def _set_led(self, name, state):
+        threading.Thread(target=self.led, args=(name, state), daemon=True).start()
+
+    # ---- Power ----
+    def power(self):
+        """Power key: standby stops playback, blanks the screen and sets the power LED to its
+        standby colour; recordings carry on. Power again wakes to the menu."""
+        with self.lock:
+            self.standby = not self.standby
+            self.next_play, self.after_play = None, None
+            self._clear_digits()
+            self._clear_pick()
+            if self.standby and self.pending is not None:
+                self.interrupt.set()
+            if not self.standby:
+                self.menu.message = ''
+            try:
+                if self.standby:
+                    self.standby_file.write_text('1\n')
+                else:
+                    self.standby_file.unlink(missing_ok=True)
+            except OSError as exc:
+                print('STANDBY_SAVE_FAILED', type(exc).__name__, flush=True)
+            self._set_led('power', 'standby' if self.standby else 'on')
+            print('STANDBY ' + ('ENTER' if self.standby else 'EXIT'), flush=True)
+            self.revision += 1
+            return self._view()
+
+    # ---- Remote keys while watching ----
+    def live_key(self, key):
+        """CH+/CH-, number keys, Record and Info while something plays. Channel keys and
+        Record act on live TV only; Info shows the overlay for anything."""
+        if key not in LIVE_KEYS:
+            raise ValueError('Unknown key')
+        with self.lock:
+            if self.standby or self.pending is None:
+                return self._view()
+            playing = self.playing or {}
+            channel = playing.get('channel') if playing.get('live') else None
+            if key == 'INFO':
+                self.osd_seq += 1
+            elif channel is None:
+                pass
+            elif key in ('CH_UP', 'CH_DOWN'):
+                self._clear_digits()
+                self._pick_channel(channel, 1 if key == 'CH_UP' else -1)
+            elif key == 'RECORD':
+                self._clear_digits()
+                self._clear_pick()
+                self._record_live(channel)
+            else:
+                self._clear_pick()
+                self._digit(key[1])
+            return self._view()
+
+    def _pick_channel(self, current, step):
+        """CH+/CH- step through channels on the overlay; tune CHANNEL_WAIT s after the last press."""
+        base = self.channel_pick['uuid'] if self.channel_pick else current
+        target = self._step_channel(base, step)
+        if target is None:
+            return
+        self.channel_pick, self.channel_pick_at = target, time.monotonic()
+        self.notice = (self._number(target.get('number')) + '  ' + str(target.get('name', ''))).strip()
+        self.notice_until = time.time() + CHANNEL_WAIT + 1
+        self.osd_seq += 1
+        if self.channel_timer is not None:
+            self.channel_timer.cancel()
+        self.channel_timer = threading.Timer(CHANNEL_WAIT, self._channel_due)
+        self.channel_timer.daemon = True
+        self.channel_timer.start()
+
+    def _clear_pick(self):
+        self.channel_pick = None
+        if self.channel_timer is not None:
+            self.channel_timer.cancel()
+            self.channel_timer = None
+
+    def _channel_due(self, force=False):
+        with self.lock:
+            target = self.channel_pick
+            if target is None or (not force and time.monotonic() - self.channel_pick_at < CHANNEL_WAIT - 0.1):
+                return
+            self._clear_pick()
+            if self.pending is not None and (self.playing or {}).get('live') and not self.standby:
+                self.notice_until = 0
+                self._zap(target)
+                self.revision += 1
+
+    def guide_key(self):
+        """Guide button: open the programme guide, ending any playback first."""
+        with self.lock:
+            if self.standby or self.setup is not None and self.setup.view() is not None:
+                return self._view()
+            self._clear_digits(); self._clear_pick()
+            if self.pending is not None:
+                self.next_play, self.after_play = None, 'guide'
+                self.interrupt.set()
+            else:
+                self._open_guide()
+            self.revision += 1
+            return self._view()
+
+    def _open_guide(self):
+        m = self.menu
+        m.stack, m.page, m.pending, m.message = [], 'home', None, ''
+        m.refresh()
+        m.selection = next((i for i, row in enumerate(m.items) if row[1] == 'guide'), 0)
+        m.enter('guide')
+
+    def _channels(self):
+        try:
+            return self.guide.channel_list()
+        except Exception as exc:
+            print('CHANNEL_LIST_ERROR', type(exc).__name__, flush=True)
+            return []
+
+    def _step_channel(self, uuid, step):
+        channels = self._channels()
+        if not channels:
+            return None
+        at = next((i for i, c in enumerate(channels) if c['uuid'] == uuid), -1)
+        return channels[(at + step) % len(channels)] if at >= 0 else channels[0]
+
+    @staticmethod
+    def _number(value):
+        """Channel number as typed on the remote: '7', '20' ('7.0' -> '7'), or ''."""
+        text_value = str(value or '').strip()
+        if text_value.endswith('.0'):
+            text_value = text_value[:-2]
+        return text_value if text_value.isdigit() else ''
+
+    def _clear_digits(self):
+        self.digits = ''
+        if self.digit_timer is not None:
+            self.digit_timer.cancel()
+            self.digit_timer = None
+
+    def _digit(self, d):
+        self.digits = (self.digits + d)[-3:]
+        self.digits_at = time.monotonic()
+        self.osd_seq += 1
+        typed = str(int(self.digits))
+        numbers = [self._number(c.get('number')) for c in self._channels()]
+        longer = [n for n in numbers if n.startswith(typed) and n != typed]
+        if len(self.digits) >= 3 or not longer:
+            self._commit_digits()
+            return
+        if self.digit_timer is not None:
+            self.digit_timer.cancel()
+        self.digit_timer = threading.Timer(DIGIT_WAIT, self._digits_due)
+        self.digit_timer.daemon = True
+        self.digit_timer.start()
+
+    def _digits_due(self):
+        with self.lock:
+            if self.digits and time.monotonic() - self.digits_at >= DIGIT_WAIT - 0.1:
+                self._commit_digits()
+                self.revision += 1
+
+    def _commit_digits(self):
+        typed = str(int(self.digits)) if self.digits else ''
+        self._clear_digits()
+        if not typed or self.pending is None or not (self.playing or {}).get('live'):
+            return
+        target = next((c for c in self._channels() if self._number(c.get('number')) == typed), None)
+        if target is None:
+            self._notify('No channel ' + typed)
+        else:
+            self._zap(target)
+
+    def _notify(self, message):
+        self.notice, self.notice_until = message, time.time() + NOTICE_SECONDS
+        self.osd_seq += 1
+
+    def _zap(self, channel):
+        """Change live channel without going back to the menu: the runner ends the current
+        session (and its pause buffer) and starts the new channel on the live tuner."""
+        if channel['uuid'] == (self.playing or {}).get('channel') and self.next_play is None:
+            return
+        self.next_play = ('/stream/channel/' + channel['uuid'] + '?profile=pass',
+                          {'name': channel.get('name', ''), 'channelUuid': channel['uuid']})
+        self.interrupt.set()
+        self.osd_seq += 1
+        print('LIVE_ZAP NUMBER=' + re.sub(r'[^0-9.]', '', str(channel.get('number', ''))), flush=True)
+
+    def _record_live(self, uuid):
+        """Record the programme on air now on the channel being watched."""
+        try:
+            now = time.time()
+            event = next((e for e in self._load_programmes(uuid)
+                          if int(e['start']) <= now < int(e['stop'])), None)
+            if event is None:
+                self._notify('No programme information to record')
+                return
+            message = self.menu.book(dict(event, channelUuid=uuid))
+            self.programmes.pop(uuid, None)   # pick up the new recording state
+            self._notify(('Recording ' + text(event.get('title'), 60)) if message == 'RECORDING SCHEDULED'
+                         else 'Already recording')
+        except Exception as exc:
+            print('LIVE_RECORD_ERROR', type(exc).__name__, str(exc)[:120], flush=True)
+            self._notify('Could not schedule the recording')
+
+    def _load_programmes(self, uuid):
+        """Now and next on a channel straight from Tvheadend (blocking)."""
+        now = time.time()
+        flt = json.dumps([{'field': 'stop', 'type': 'numeric', 'value': int(now), 'comparison': 'gt'}])
+        rows = self.menu.api.call('epg/events/grid', {'channel': uuid, 'filter': flt, 'sort': 'start',
+                                                      'dir': 'asc', 'start': 0, 'limit': 3}).get('entries', [])
+        out = []
+        for e in rows:
+            try:
+                if e.get('channelUuid', uuid) == uuid and int(e['stop']) > now:
+                    int(e['start'])
+                    out.append(e)
+            except (KeyError, TypeError, ValueError):
+                continue
+        out = sorted(out, key=lambda e: int(e['start']))[:2]
+        self.programmes[uuid] = (time.time(), out)
+        return out
+
+    def _programmes_async(self, uuid):
+        """Cached now/next for the overlay; refreshed in the background, never in the view."""
+        hit = self.programmes.get(uuid)
+        now = time.time()
+        stale = hit is None or now - hit[0] > PROGRAMME_SECONDS or bool(hit[1] and int(hit[1][0]['stop']) <= now)
+        if stale and uuid not in self.programmes_loading:
+            self.programmes_loading.add(uuid)
+
+            def load():
+                try:
+                    self._load_programmes(uuid)
+                except Exception as exc:
+                    print('PROGRAMME_LOAD_ERROR', type(exc).__name__, flush=True)
+                    self.programmes[uuid] = (time.time(), hit[1] if hit else [])
+                finally:
+                    self.programmes_loading.discard(uuid)
+            threading.Thread(target=load, daemon=True).start()
+        return [e for e in (hit[1] if hit else []) if int(e['stop']) > now]
+
+    def _live_details(self, playing):
+        """Channel number/name and the programme now and next, for the live overlay."""
+        uuid = playing.get('channel')
+        out = {}
+        channel = next((c for c in (self.guide.channels or ()) if c['uuid'] == uuid), None)
+        if channel:
+            out['number'], out['channel_name'] = channel['number'], channel['name']
+        events = self._programmes_async(uuid) if uuid else []
+        now = time.time()
+        shown = [{'title': text(e.get('title'), 80) or 'Untitled', 'start': int(e['start']),
+                  'stop': int(e['stop']), 'start_time': hhmm(e['start']),
+                  'times': hhmm(e['start']) + ' – ' + hhmm(e['stop']),
+                  'rec': bool(e.get('dvrUuid')) and str(e.get('dvrState', '')) not in ('', 'missed')}
+                 for e in events]
+        if shown and shown[0]['start'] <= now:
+            out['now'] = shown.pop(0)
+        if shown:
+            out['next'] = shown[0]
+        return out
 
     def guide_select(self, revision, channel, event_id):
         """OK on a grid cell: open the programme's options (watch if on now, schedule)."""
@@ -266,7 +573,7 @@ class Controller:
                         'selected':0, 'status':setup.get('message', ''), 'playback':False,
                         'clock':clock(), 'setup':setup}
         m = self.menu
-        if m.page in ('device-info', 'epg-settings'):
+        if m.page in ('device-info', 'epg-settings', 'wifi'):
             m.refresh()
         start = m.selection // ROWS * ROWS
         if self.pending:
@@ -302,6 +609,13 @@ class Controller:
                 view['playing']['starting'] = bool(getattr(self.timeshift, 'buffering', False))
                 view['playing']['mode'] = self.live_mode
                 view['playing']['source'] = self.live_source
+            if view['playing'].get('live') and view['playing'].get('channel'):
+                view['playing'].update(self._live_details(view['playing']))
+            view['playing']['digits'] = self.digits
+            view['playing']['notice'] = self.notice if time.time() < self.notice_until else ''
+            view['playing']['osd'] = self.osd_seq
+        if self.standby:
+            view['standby'] = True
         return view
 
     def command(self, revision, cmd):
@@ -309,7 +623,7 @@ class Controller:
             raise ValueError('Unknown command')
         with self.lock:
             # Ignore stale keys from an old view and any input during handover.
-            if self.pending or revision != self.revision:
+            if self.pending or self.standby or revision != self.revision:
                 return self._view()
             if self.setup is not None and self.setup.view() is not None:
                 if cmd == 'OK':
@@ -329,29 +643,58 @@ class Controller:
                     item = watch[1] if watch else (
                         self.menu.items[self.menu.selection][1] if self.menu.items else {})
                     item = item if isinstance(item, dict) else {}
-                    active = bool(self.menu.playback_active)
-                    local = None if not stream.startswith('/dvrfile/') else (
-                        growing_recording(item) if active else local_recording(item))
-                    self.pending = (stream, active, local)
-                    title = item.get('disp_title') or item.get('title') or item.get('name') or ''
-                    try:
-                        duration = max(0, int(item['stop']) - int(item['start']))
-                    except (KeyError, TypeError, ValueError):
-                        duration = 0
-                    self.playing = {'title': text(title, 80), 'duration': duration,
-                                    'live': stream.startswith('/stream/')}
-                    if stream.startswith('/stream/'):
-                        icon = epg.image(item.get('icon_public_url') or item.get('icon'))
-                        if not icon and item.get('channelUuid'):
-                            icon = self.guide.icon(item['channelUuid'])
-                        self.playing['icon'] = icon
-                    print('PLAYBACK_INDEXED=' + str(int(local is not None)), flush=True)
-                    print('PLAYBACK_START KIND=' + ('LIVE' if stream.startswith('/stream/') else 'RECORDING'),
-                          flush=True)
-                    self.wake.set()
+                    self._begin(stream, item, bool(self.menu.playback_active))
             self._player_env()
             self.revision += 1
             return self._view()
+
+    def _begin(self, stream, item, active):
+        """Hand a stream to the runner (lock held)."""
+        local = None if not stream.startswith('/dvrfile/') else (
+            growing_recording(item) if active else local_recording(item))
+        self.pending = (stream, active, local)
+        title = item.get('disp_title') or item.get('title') or item.get('name') or ''
+        try:
+            duration = max(0, int(item['stop']) - int(item['start']))
+        except (KeyError, TypeError, ValueError):
+            duration = 0
+        self.playing = {'title': text(title, 80), 'duration': duration,
+                        'live': stream.startswith('/stream/')}
+        if stream.startswith('/stream/'):
+            icon = epg.image(item.get('icon_public_url') or item.get('icon'))
+            match = CHANNEL_PATH.match(stream)
+            if match:
+                self.playing['channel'] = match.group(1)
+                self._channels()   # numbers and names for the overlay (cached list)
+            if not icon and (item.get('channelUuid') or match):
+                icon = self.guide.icon(item.get('channelUuid') or match.group(1))
+            self.playing['icon'] = icon
+        print('PLAYBACK_INDEXED=' + str(int(local is not None)), flush=True)
+        print('PLAYBACK_START KIND=' + ('LIVE' if stream.startswith('/stream/') else 'RECORDING'),
+              flush=True)
+        self.wake.set()
+
+    def guide_record(self, revision, channel, event_id):
+        """Record key on a guide cell: book that programme straight away."""
+        channel = native.identifier(channel)
+        event = self.guide.event(channel, int(event_id))   # outside the lock: may call Tvheadend
+        with self.lock:
+            if self.pending or self.standby or revision != self.revision or self.menu.page != 'guide':
+                return {'ok': False, 'message': ''}
+            if event is None:
+                return {'ok': False, 'message': 'Programme not found'}
+            try:
+                message = self.menu.book(dict(event, channelUuid=channel))
+            except ValueError as exc:
+                return {'ok': False, 'message': str(exc)}
+            except Exception as exc:
+                print('GUIDE_RECORD_ERROR', type(exc).__name__, flush=True)
+                return {'ok': False, 'message': 'Could not schedule the recording'}
+            with self.guide.lock:
+                self.guide.windows.clear()     # the next window shows the recording badge
+            ok = message == 'RECORDING SCHEDULED'
+            return {'ok': True, 'scheduled': ok,
+                    'message': 'Recording scheduled' if ok else 'Already scheduled'}
 
     # ---- Resume ----
     def _resume(self, cmd):
@@ -457,8 +800,22 @@ class Controller:
             PLAYER_EXTRA_ENV.clear()
             self.pending = None
             self.playing = None
-            self.menu.message = 'Playback finished'
+            self.interrupt.clear()
             self.revision += 1
+            if self.next_play is not None and not self.standby:
+                stream, item = self.next_play
+                self.next_play = None
+                self._begin(stream, item, False)   # channel change: straight to the next one
+                self._player_env()
+                return
+            self.next_play = None
+            self.menu.message = '' if self.standby else 'Playback finished'
+            if self.after_play == 'guide' and not self.standby:
+                try:
+                    self._open_guide()
+                except Exception as exc:
+                    print('GUIDE_OPEN_ERROR', type(exc).__name__, flush=True)
+            self.after_play = None
             self.wake.clear()
 
     def log_key(self, code, key):
@@ -573,6 +930,15 @@ class MenuHandler(http.server.BaseHTTPRequestHandler):
                 self.send(200, {'ok': self.server.controller.live_pause()})
             elif self.path == '/api/live-stop':
                 self.send(200, {'ok': self.server.controller.live_exit()})
+            elif self.path == '/api/live-key':
+                self.send(200, self.server.controller.live_key(str(body['key'])))
+            elif self.path == '/api/guide-key':
+                self.send(200, self.server.controller.guide_key())
+            elif self.path == '/api/power':
+                self.send(200, self.server.controller.power())
+            elif self.path == '/api/guide-record':
+                self.send(200, self.server.controller.guide_record(
+                    int(body['revision']), str(body['channel']), int(body['event'])))
             else:
                 self.send(404, {'error': 'not found'})
         except (ValueError, KeyError, TypeError):
@@ -674,7 +1040,8 @@ class Runner:
                     player = self.launch_player('http://127.0.0.1:9992' + token, active)
             print('PLAYBACK_GROWING_RECORDING=' + str(int(active)) + ' LOCAL_INDEX=' + str(int(bool(local))) +
                   ' TIMESHIFT=' + str(int(live)) + ' AUDIO=' + (' '.join(PLAYER_AUDIO) or 'probe'), flush=True)
-            while player is not None and player.poll() is None and not self.stop.wait(0.2):
+            while (player is not None and player.poll() is None and not self.stop.wait(0.2)
+                   and not self.c.interrupt.is_set()):
                 pass
         finally:
             self.stop_player(player)
@@ -737,6 +1104,8 @@ class Runner:
             if ts.writer is None or not ts.writer.is_alive():
                 print('LIVE_TUNER_STREAM_ENDED', flush=True)
                 break
+            if c.interrupt.is_set():
+                break   # channel change or standby
             if c.live_mode == 'relay':
                 if c.live_stop.is_set():
                     break
@@ -810,7 +1179,7 @@ class Runner:
         player = self._relay(stream, token)
         print('LIVE_DIRECT AUDIO=' + (' '.join(PLAYER_AUDIO) or 'probe'), flush=True)
         near, was_paused = 0, False
-        while player.poll() is None and not self.stop.wait(0.2):
+        while player.poll() is None and not self.stop.wait(0.2) and not c.interrupt.is_set():
             if c.live_mode == 'relay' and c.live_switch.is_set():
                 start = ts.position_ms(c.live_switch_at) - LIVE_SWITCH_BACK_MS
                 if not ts.index_ready() or start <= 0:
@@ -881,6 +1250,39 @@ class Runner:
         finally:
             self.stop_browser(self.browser)
             self.browser = None
+
+
+def default_route(path='/proc/net/route'):
+    """True when some interface has a default route (Ethernet or Wi-Fi)."""
+    try:
+        lines = Path(path).read_text().splitlines()[1:]
+    except OSError:
+        return False
+    return any(len(f) > 3 and f[1] == '00000000' and int(f[3], 16) & 1 for f in (x.split() for x in lines))
+
+
+class LedMonitor:
+    """Recording LED while Tvheadend records, Internet LED while there is a default route."""
+
+    def __init__(self, stop, api, led, interval=20, route=default_route):
+        self.stop, self.api, self.led, self.interval, self.route = stop, api, led, interval, route
+        self.state = {}
+
+    def check(self):
+        try:
+            recording = any(r.get('sched_status') == 'recording' for r in self.api.rows('dvr/entry/grid_upcoming'))
+        except Exception:
+            recording = self.state.get('recording') == 'on'
+        for name, value in (('recording', 'on' if recording else 'off'),
+                            ('internet', 'on' if self.route() else 'off')):
+            if self.state.get(name) != value:
+                self.state[name] = value
+                self.led(name, value)
+
+    def run(self):
+        self.check()
+        while not self.stop.wait(self.interval):
+            self.check()
 
 
 class ChrootMounts:
@@ -1162,6 +1564,16 @@ class _Finished:
 def _manager_open(url, timeout=10):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     return opener.open(url, timeout=timeout)
+
+
+def manager_led(name, state):
+    """Set a front-panel LED through the tuner manager (it owns the vendor GPIO helper)."""
+    try:
+        with _manager_open(MANAGER + '/led/' + name + '/' + state, 4) as r:
+            print('LED ' + name.upper() + '=' + state.upper() + ' ' +
+                  r.read(32).decode('ascii', 'replace').strip(), flush=True)
+    except Exception as exc:
+        print('LED_ERROR ' + name.upper() + ' ' + type(exc).__name__, flush=True)
 
 
 def manager_decode(on):
@@ -1566,6 +1978,7 @@ def serve(config, probe):
     api = native.API(config)
     controller = Controller(native.Menu(api, config.get('dvr_config_uuid', '')))
     controller.setup = InitialSetup()
+    controller.restore_standby()
     page = Path(__file__).with_name('menu.html').read_text(encoding='utf-8-sig')
     launch_browser = browser_launcher(probe)
     stop = threading.Event()
@@ -1583,6 +1996,7 @@ def serve(config, probe):
         print('HTML_MENU_READY PORT=' + str(PORT), flush=True)
         indexer = Indexer(stop, controller)
         threading.Thread(target=indexer.run, daemon=True).start()
+        threading.Thread(target=LedMonitor(stop, api, controller.led).run, daemon=True).start()
         Runner(controller, launch_browser, player_launcher, stop, proxy.tokens,
                overlay=OVERLAY, status_file=PLAYER_STATUS, timeshift=timeshift).run()
     finally:

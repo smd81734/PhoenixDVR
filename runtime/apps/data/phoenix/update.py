@@ -28,7 +28,7 @@ LIVE = Path('/')
 LOG = Path('/var/log')
 LOCK = Path('/run/phoenix-update.lock')
 MAX_PACKAGE = 512 * 1024 * 1024
-FRONTEND = {'browser.py', 'initial_setup.py', 'frontend.py', 'html_frontend.py', 'epg_settings.py', 'xmltv.py', 'version.txt',
+FRONTEND = {'browser.py', 'initial_setup.py', 'frontend.py', 'html_frontend.py', 'epg_settings.py', 'wifi_settings.py', 'xmltv.py', 'version.txt',
             'guide.py', 'guide.js', 'guide.css', 'menu.html', 'control.sh', 'html-control.sh', 'phoenix.png'}
 MANAGER = {'autostart.sh', 'control.sh', 'launch.sh', 'sweep.py', 'capacity.py'}
 
@@ -70,7 +70,7 @@ def allowed(name):
         return True
     if name.startswith('data/nexus-loader-test-v1/opt/frontend/'):
         return name.rsplit('/', 1)[-1] in {'mkindex', 'phoenix-player', 'player-controls.so', 'player-status.so', 'player-livefile.so'} and len(parts) == 5
-    if name == 'data/nexus-loader-test-v1/opt/tuner-manager/tuner-manager':
+    if name in ('data/nexus-loader-test-v1/opt/tuner-manager/tuner-manager', 'data/nexus-loader-test-v1/opt/wifi/wifi-dma'):
         return True
     return len(parts) == 5 and parts[:4] in [('rootfs', 'usr', 'local', 'sbin'), ('rootfs', 'usr', 'local', 'bin')]
 
