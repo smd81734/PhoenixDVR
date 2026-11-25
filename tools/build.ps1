@@ -23,7 +23,7 @@ $manifest=Join-Path $Output 'app.manifest'
 $manifestXml=@'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="2026.11.24.29" processorArchitecture="amd64" name="Phoenix.Setup" type="win32"/>
+  <assemblyIdentity version="2026.11.26.30" processorArchitecture="amd64" name="Phoenix.Setup" type="win32"/>
   <description>Phoenix Setup</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false"/></requestedPrivileges></security>

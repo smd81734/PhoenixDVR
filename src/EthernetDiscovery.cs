@@ -10,17 +10,46 @@ using System.Diagnostics;
 
 namespace PhoenixSetup {
  public sealed class EthernetAdapter {
-  public string Id,Name,Description;public byte[] Mac;public int Index;
-  public override string ToString(){return Name+" — "+Description;}
+  public string Id,Name,Description;public byte[] Mac;public int Index;public bool Wireless,Up;
+  // Wi-Fi reaches the DVR only through a home router that bridges Wi-Fi and its network ports.
+  public override string ToString(){return (Wireless?"Wi-Fi, through your router: ":"")+Name+" — "+Description;}
+  static bool Supported(NetworkInterface n){
+   string description=n.Description.ToLowerInvariant();
+   if(n.NetworkInterfaceType!=NetworkInterfaceType.Ethernet&&n.NetworkInterfaceType!=NetworkInterfaceType.Wireless80211)return false;
+   if(n.GetPhysicalAddress().GetAddressBytes().Length!=6)return false;
+   foreach(string skip in new[]{"virtual","npcap","tailscale","hyper-v","wi-fi direct","bluetooth","tap-windows","wintun","openvpn","wireguard"})if(description.Contains(skip))return false;
+   return true;
+  }
   public static List<EthernetAdapter> List(){
    var result=new List<EthernetAdapter>();
    foreach(var n in NetworkInterface.GetAllNetworkInterfaces()){
-    string description=n.Description.ToLowerInvariant();
-    if(n.NetworkInterfaceType!=NetworkInterfaceType.Ethernet||n.GetPhysicalAddress().GetAddressBytes().Length!=6||description.Contains("virtual")||description.Contains("npcap")||description.Contains("tailscale")||description.Contains("hyper-v"))continue;
-    try{result.Add(new EthernetAdapter{Id=n.Id,Name=n.Name,Description=n.Description,Mac=n.GetPhysicalAddress().GetAddressBytes(),Index=n.GetIPProperties().GetIPv4Properties().Index});}catch(NetworkInformationException){}
-   }return result;
+    if(!Supported(n))continue;
+    try{result.Add(new EthernetAdapter{Id=n.Id,Name=n.Name,Description=n.Description,Mac=n.GetPhysicalAddress().GetAddressBytes(),Index=n.GetIPProperties().GetIPv4Properties().Index,Wireless=n.NetworkInterfaceType==NetworkInterfaceType.Wireless80211,Up=n.OperationalStatus==OperationalStatus.Up});}catch(NetworkInformationException){}
+   }
+   // Connected ports first; a cable before Wi-Fi. The sort is stable, so Windows' order is kept otherwise.
+   var ordered=new List<EthernetAdapter>();
+   foreach(bool up in new[]{true,false})foreach(bool wireless in new[]{false,true})ordered.AddRange(result.FindAll(a=>a.Up==up&&a.Wireless==wireless));
+   return ordered;
   }
-  public void Verify(){var current=List().Find(n=>String.Equals(n.Id,Id,StringComparison.OrdinalIgnoreCase));if(current==null||BitConverter.ToString(current.Mac)!=BitConverter.ToString(Mac))throw new IOException("The selected Ethernet adapter changed. Select it again.");Index=current.Index;}
+  public void Verify(){var current=List().Find(n=>String.Equals(n.Id,Id,StringComparison.OrdinalIgnoreCase));if(current==null||BitConverter.ToString(current.Mac)!=BitConverter.ToString(Mac))throw new IOException("The selected network connection changed. Select it again.");Index=current.Index;Wireless=current.Wireless;}
+ }
+ public static class FactoryAddress {
+  public const int FullRangeCount=(254*254-1)*253;
+  public static bool IsAllowed(uint address){return (address>>24)==10&&((address>>16)&255)<254&&((address>>8)&255)<254&&(address&255)>0&&(address&255)<254&&(address&0x00ffff00u)!=0;}
+  public static uint FullRangeAddress(int index){
+   if(index<0||index>=FullRangeCount)throw new ArgumentOutOfRangeException("index");
+   uint subnet=(uint)(index/253+1);
+   return 0x0a000000u|((subnet/254)<<16)|((subnet%254)<<8)|(uint)(index%253+1);
+  }
+  // Factory mode picks 10.a.b.c with each part 0-253 (a and b not both 0, c not 0).
+  public static uint Parse(string text){
+   IPAddress parsed;text=(text??"").Trim();
+   if(!IPAddress.TryParse(text,out parsed)||parsed.AddressFamily!=System.Net.Sockets.AddressFamily.InterNetwork||parsed.ToString()!=text)throw new FormatException("Type the DVR's setup address as four numbers, like 10.12.34.56.");
+   var b=parsed.GetAddressBytes();
+   uint address=(uint)(b[0]<<24|b[1]<<16|b[2]<<8|b[3]);
+   if(!IsAllowed(address))throw new FormatException("The DVR's setup address starts with 10. and each other number is between 0 and 253, like 10.12.34.56.");
+   return address;
+  }
  }
  public static class FactoryCandidates {
   static uint Next(uint[] state,ref int f,ref int r){uint sum=unchecked(state[f]+state[r]);state[f]=sum;if(++f==31)f=0;if(++r==31)r=0;return sum>>1;}
@@ -40,13 +69,17 @@ namespace PhoenixSetup {
  public static class ArpPackets {
   public static byte[] Request(byte[] mac,uint target){
    if(mac==null||mac.Length!=6)throw new ArgumentException("Ethernet MAC required");
+   if(!FactoryAddress.IsAllowed(target))throw new ArgumentOutOfRangeException("target","Factory discovery only probes valid setup addresses.");
    var p=new byte[60];for(int i=0;i<6;i++)p[i]=255;Array.Copy(mac,0,p,6,6);p[12]=8;p[13]=6;p[15]=1;p[16]=8;p[18]=6;p[19]=4;p[21]=1;Array.Copy(mac,0,p,22,6);
    // Raw ARP discovery does not need a Windows IP alias. Replies are captured on this adapter.
    p[28]=169;p[29]=254;p[30]=254;p[31]=1;for(int i=0;i<4;i++)p[38+i]=(byte)(target>>(24-8*i));return p;
   }
   public static DiscoveredBox Reply(byte[] p,byte[] local){
    if(p.Length<42||p[12]!=8||p[13]!=6||p[14]!=0||p[15]!=1||p[16]!=8||p[17]!=0||p[18]!=6||p[19]!=4||p[20]!=0||p[21]!=2)return null;
-   for(int i=0;i<6;i++)if(p[32+i]!=local[i]||p[22+i]!=p[6+i])return null;
+   bool self=true;
+   for(int i=0;i<6;i++){if(p[i]!=local[i]||p[32+i]!=local[i]||p[22+i]!=p[6+i])return null;if(p[22+i]!=local[i])self=false;}
+   uint address=(uint)(p[28]<<24|p[29]<<16|p[30]<<8|p[31]);
+   if(self||!FactoryAddress.IsAllowed(address))return null;
    if(p[38]!=169||p[39]!=254||p[40]!=254||p[41]!=1)return null;
    var mac=new byte[6];Array.Copy(p,22,mac,0,6);return new DiscoveredBox{Address=new IPAddress(new[]{p[28],p[29],p[30],p[31]}).ToString(),Mac=mac};
   }
@@ -76,9 +109,9 @@ namespace PhoenixSetup {
    library=LoadLibraryEx(path,IntPtr.Zero,8);if(library==IntPtr.Zero)throw new IOException("Npcap could not load. Check its installation and run Phoenix Setup as administrator.");
    try{
     open=Function<OpenFn>("pcap_open_live");close=Function<CloseFn>("pcap_close");nonblock=Function<NonblockFn>("pcap_setnonblock");next=Function<NextFn>("pcap_next_ex");compile=Function<CompileFn>("pcap_compile");setFilter=Function<SetFilterFn>("pcap_setfilter");free=Function<FreeFn>("pcap_freecode");allocate=Function<AllocateFn>("pcap_sendqueue_alloc");destroy=Function<CloseFn>("pcap_sendqueue_destroy");transmit=Function<TransmitFn>("pcap_sendqueue_transmit");
-    string name="\\Device\\NPF_"+adapter.Id;var error=new StringBuilder(512);rx=open(name,128,1,20,error);tx=open(name,128,0,20,error);
+    string name="\\Device\\NPF_"+adapter.Id;var error=new StringBuilder(512);rx=open(name,128,adapter.Wireless?0:1,20,error);tx=open(name,128,0,20,error);
     if(rx==IntPtr.Zero||tx==IntPtr.Zero||nonblock(rx,1,error)!=0)throw new IOException("Npcap could not open the selected adapter: "+error);
-    Filter program;string mac=BitConverter.ToString(adapter.Mac).Replace('-',':');if(compile(rx,out program,"not ether src "+mac,1,0xffffffff)!=0)throw new IOException("Could not prepare Ethernet capture");
+    Filter program;string mac=BitConverter.ToString(adapter.Mac).Replace('-',':');if(compile(rx,out program,"arp and not ether src "+mac,1,0xffffffff)!=0)throw new IOException("Could not prepare Ethernet capture");
     try{if(setFilter(rx,ref program)!=0)throw new IOException("Could not apply Ethernet capture filter");}finally{free(ref program);}
    }catch{Dispose();throw;}
   }
@@ -86,31 +119,62 @@ namespace PhoenixSetup {
    Directory.CreateDirectory(folder);IntPtr queue=allocate(76*256);if(queue==IntPtr.Zero)throw new IOException("Npcap queue allocation failed");
    using(var capture=new BinaryWriter(File.Create(Path.Combine(folder,"discovery.pcap")))){
     capture.Write(0xa1b2c3d4u);capture.Write((ushort)2);capture.Write((ushort)4);capture.Write(0u);capture.Write(0u);capture.Write(128u);capture.Write(1u);
-    var watch=Stopwatch.StartNew();long total=full?16777216:candidates.Count,sent=0;double last=-5;
+    var watch=Stopwatch.StartNew();long total=full?FactoryAddress.FullRangeCount:candidates.Count,sent=0;double last=-5;
+    // Wired: 10 000 probes a second. Wi-Fi: 2 000, because the router repeats each probe to every Wi-Fi device.
+    int spacing=adapter.Wireless?500:100,perMs=adapter.Wireless?2:10;
     try{
      while(sent<total){
       token.ThrowIfCancellationRequested();int count=(int)Math.Min(256,total-sent);var payload=new byte[count*76];
       for(int j=0;j<count;j++){
-       uint address=full?0x0a000000u+(uint)(sent+j):candidates[(int)sent+j];byte[] packet=ArpPackets.Request(adapter.Mac,address);
-       Array.Copy(BitConverter.GetBytes(j*100),0,payload,j*76+4,4);Array.Copy(BitConverter.GetBytes(60),0,payload,j*76+8,4);Array.Copy(BitConverter.GetBytes(60),0,payload,j*76+12,4);Array.Copy(packet,0,payload,j*76+16,60);
+       uint address=full?FactoryAddress.FullRangeAddress((int)(sent+j)):candidates[(int)sent+j];byte[] packet=ArpPackets.Request(adapter.Mac,address);
+       Array.Copy(BitConverter.GetBytes(j*spacing),0,payload,j*76+4,4);Array.Copy(BitConverter.GetBytes(60),0,payload,j*76+8,4);Array.Copy(BitConverter.GetBytes(60),0,payload,j*76+12,4);Array.Copy(packet,0,payload,j*76+16,60);
       }
       var q=(Queue)Marshal.PtrToStructure(queue,typeof(Queue));Marshal.Copy(payload,0,q.Buffer,payload.Length);q.Length=(uint)payload.Length;Marshal.StructureToPtr(q,queue,false);
       if(transmit(tx,queue,1)!=(uint)payload.Length)throw new IOException("Ethernet transmission stopped; capture logs saved");sent+=count;
       IntPtr header,data;int result;
       for(int grace=0;grace<=(sent>=total?60:0);grace++){
       while((result=next(rx,out header,out data))==1){
-       var h=(Header)Marshal.PtrToStructure(header,typeof(Header));if(h.Captured>128)throw new IOException("Invalid Ethernet capture size. Check you have selected the correct Ethernet port and connected the DVR directly to it.");var packet=new byte[h.Captured];Marshal.Copy(data,packet,0,packet.Length);
+       var h=(Header)Marshal.PtrToStructure(header,typeof(Header));if(h.Captured>128)throw new IOException("Invalid network capture size. Check you have selected the right network connection.");var packet=new byte[h.Captured];Marshal.Copy(data,packet,0,packet.Length);
        capture.Write(h.Seconds);capture.Write(h.Microseconds);capture.Write(h.Captured);capture.Write(h.Length);capture.Write(packet);
        var box=ArpPackets.Reply(packet,adapter.Mac);if(box!=null){box.Probes=sent;box.Seconds=watch.Elapsed.TotalSeconds;File.WriteAllText(Path.Combine(folder,"discovery.json"),Json.Write(box));return box;}
       }
       if(result<0)throw new IOException("Ethernet capture stopped");
       if(sent>=total&&grace<60){token.ThrowIfCancellationRequested();Thread.Sleep(50);}
       }
-      int delay=(int)(sent/10-watch.ElapsedMilliseconds);if(delay>0&&token.WaitHandle.WaitOne(delay))token.ThrowIfCancellationRequested();
+      int delay=(int)(sent/perMs-watch.ElapsedMilliseconds);if(delay>0&&token.WaitHandle.WaitOne(delay))token.ThrowIfCancellationRequested();
       if(watch.Elapsed.TotalSeconds-last>=1){last=watch.Elapsed.TotalSeconds;string message=String.Format("Finding factory IP: {0:N0} / {1:N0} ({2:0.0}%)",sent,total,100.0*sent/total);progress(message);try{File.WriteAllText(Path.Combine(folder,"discovery-progress.json"),Json.Write(new{probes=sent,total=total,seconds=watch.Elapsed.TotalSeconds,full_range=full}));}catch(IOException){}}
      }
     }finally{destroy(queue);}
-   }throw new IOException("No factory address found. Check the direct cable and remote sequence, then retry. Full-range search is available under connection options.");
+   }throw new IOException(adapter.Wireless?"No factory address found over Wi-Fi. Check the DVR's cable goes to the same router this computer's Wi-Fi uses (not a guest network), then retry. A cable straight from the DVR to this computer is the most reliable.":"No factory address found. Check the cable and remote sequence, then retry. Full-range search is available under connection options.");
+  }
+  // Asks one known address a few times instead of searching; used when the address is typed in.
+  public DiscoveredBox Probe(EthernetAdapter adapter,uint address,CancellationToken token,Action<string> progress,string folder,int attempts=20){
+   Directory.CreateDirectory(folder);IntPtr queue=allocate(76*4);if(queue==IntPtr.Zero)throw new IOException("Npcap queue allocation failed");
+   string text=new IPAddress(new[]{(byte)(address>>24),(byte)(address>>16),(byte)(address>>8),(byte)address}).ToString();
+   using(var capture=new BinaryWriter(File.Create(Path.Combine(folder,"discovery.pcap")))){
+    capture.Write(0xa1b2c3d4u);capture.Write((ushort)2);capture.Write((ushort)4);capture.Write(0u);capture.Write(0u);capture.Write(128u);capture.Write(1u);
+    var watch=Stopwatch.StartNew();
+    try{
+     for(int attempt=1;attempt<=attempts;attempt++){
+      token.ThrowIfCancellationRequested();progress("Asking for the DVR at "+text+" ("+attempt+" of "+attempts+")");
+      byte[] packet=ArpPackets.Request(adapter.Mac,address);var payload=new byte[76];
+      Array.Copy(BitConverter.GetBytes(60),0,payload,8,4);Array.Copy(BitConverter.GetBytes(60),0,payload,12,4);Array.Copy(packet,0,payload,16,60);
+      var q=(Queue)Marshal.PtrToStructure(queue,typeof(Queue));Marshal.Copy(payload,0,q.Buffer,payload.Length);q.Length=(uint)payload.Length;Marshal.StructureToPtr(q,queue,false);
+      if(transmit(tx,queue,0)!=(uint)payload.Length)throw new IOException("Network transmission stopped; capture logs saved");
+      for(int wait=0;wait<20;wait++){
+       IntPtr header,data;int result;
+       while((result=next(rx,out header,out data))==1){
+        var h=(Header)Marshal.PtrToStructure(header,typeof(Header));if(h.Captured>128)throw new IOException("Invalid network capture size. Check you have selected the right network connection.");var bytes=new byte[h.Captured];Marshal.Copy(data,bytes,0,bytes.Length);
+        capture.Write(h.Seconds);capture.Write(h.Microseconds);capture.Write(h.Captured);capture.Write(h.Length);capture.Write(bytes);
+        var box=ArpPackets.Reply(bytes,adapter.Mac);if(box!=null&&box.Address==text){box.Probes=attempt;box.Seconds=watch.Elapsed.TotalSeconds;File.WriteAllText(Path.Combine(folder,"discovery.json"),Json.Write(box));return box;}
+       }
+       if(result<0)throw new IOException("Network capture stopped");
+       if(token.WaitHandle.WaitOne(50))token.ThrowIfCancellationRequested();
+      }
+     }
+    }finally{destroy(queue);}
+   }
+   throw new IOException("The DVR didn't answer at "+text+". Check the address, that the DVR is in setup mode (remote sequence, then wait 2 minutes) and that it's on the selected network. Or untick the address option to search for it.");
   }
   public void Dispose(){if(rx!=IntPtr.Zero){close(rx);rx=IntPtr.Zero;}if(tx!=IntPtr.Zero){close(tx);tx=IntPtr.Zero;}if(library!=IntPtr.Zero){FreeLibrary(library);library=IntPtr.Zero;}}
  }

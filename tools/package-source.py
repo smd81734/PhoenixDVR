@@ -2,7 +2,7 @@
 import argparse,hashlib,re,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-ROOT_FILES=('README.md','BUILDING.md','BASELINE.json','PROJECT.json','.gitignore','.gitattributes')
+ROOT_FILES=('README.md','BUILDING.md','BASELINE.json','PROJECT.json','LICENSE','.gitignore','.gitattributes')
 DIRECTORIES=('src','bootstrap','tools','tests','runtime')
 SUFFIXES={'.cs','.py','.sh','.ps1','.ld','.c','.h','.in','.json','.md'}
 PRIVATE_PATHS=(re.compile(r'(?i)\b[A-Z]:[\\/]'),re.compile(r'(?i)(?:/Users/[A-Za-z0-9_.-]+/|/home/(?!hybroad/)[A-Za-z0-9_.-]+/)'),re.compile(r'(?i)\\\\[A-Za-z0-9_.-]+\\[A-Za-z0-9_.-]+'))

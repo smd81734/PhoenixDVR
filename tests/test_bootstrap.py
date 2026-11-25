@@ -44,6 +44,22 @@ class ConfigTests(unittest.TestCase):
  def test_oversized_key_refused(self):
   c=self.config();c['authorized_key']='x'*3000
   with self.assertRaisesRegex(ValueError,'public key'):stage2.validate_config(c)
+ def test_optional_wifi(self):
+  c=stage2.validate_config(self.config());self.assertEqual((c['wifi_ssid'],c['wifi_password']),('',''))
+  c=self.config();c.update(wifi_ssid='Home Net',wifi_password='pa ss word');self.assertEqual(stage2.validate_config(c)['wifi_ssid'],'Home Net')
+  c=self.config();c.update(wifi_ssid='Cafe',wifi_password='');stage2.validate_config(c)
+  for ssid,password,reason in (('Home','short','Wi-Fi password'),('x'*33,'12345678','network name'),('Ho\nme','12345678','network name'),('','12345678','Wi-Fi settings'),('Home','a'*64+'z','Wi-Fi password')):
+   c=self.config();c.update(wifi_ssid=ssid,wifi_password=password)
+   with self.assertRaisesRegex(ValueError,reason):stage2.validate_config(c)
+ def test_wifi_settings_written_private(self):
+  import stat
+  with tempfile.TemporaryDirectory() as d:
+   self.assertFalse(stage2.write_wifi(d,{'wifi_ssid':'','wifi_password':''}))
+   self.assertTrue(stage2.write_wifi(d,{'wifi_ssid':'Home','wifi_password':'secret-passphrase'}))
+   path=Path(d)/'phoenix-pvr/settings/wifi.json';value=json.loads(path.read_text())
+   self.assertEqual((value['ssid'],value['psk'],value['security'],value['source']),('Home','secret-passphrase','wpa2','installer'))
+   if hasattr(__import__('os'),'getuid'):self.assertEqual(stat.S_IMODE(path.stat().st_mode),0o600)
+   stage2.write_wifi(d,{'wifi_ssid':'Cafe','wifi_password':''});self.assertEqual(json.loads(path.read_text())['security'],'open')
 class InitialCommitTests(unittest.TestCase):
  def fixture(self,root):
   system=root/'candidate/alpine-system';(system/'data').mkdir(parents=True);(system/'data/new').write_text('new');disk=root/'disk';disk.mkdir();(disk/'existing-stock-recording').write_bytes(b'keep');return system,disk

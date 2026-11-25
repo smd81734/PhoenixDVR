@@ -27,7 +27,7 @@ def build(output):
     sums=output/'phoenix/SHA256SUMS';manifest=output/'payload.json'
     files=sorted(p for p in output.rglob('*') if p.is_file() and p not in (sums,manifest))
     sums.write_bytes(''.join(sha(p)+'  '+p.relative_to(output).as_posix()+'\n' for p in files).encode('ascii'))
-    files=sorted(files+[sums]);data={'Format':1,'ProtocolVersion':5,'Release':'preview27','HardwareValidated':False,'Files':[{'Path':p.relative_to(output).as_posix(),'Sha256':sha(p),'Bytes':p.stat().st_size} for p in files]}
+    files=sorted(files+[sums]);data={'Format':1,'ProtocolVersion':5,'Release':'preview30','HardwareValidated':False,'Files':[{'Path':p.relative_to(output).as_posix(),'Sha256':sha(p),'Bytes':p.stat().st_size} for p in files]}
     manifest.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8',newline='\n')
     for name in ('base-rootfs.tar.gz','check-busybox','check-ld-musl-armhf.so.1'):
         if sha(output/'phoenix'/name)!=receipt['baseline_files_sha256']['usb-payload/phoenix/'+name]:raise ValueError('Runtime asset verification failed: '+name)

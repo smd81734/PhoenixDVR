@@ -12,8 +12,8 @@ using System.Diagnostics;
 
 namespace PhoenixSetup {
  public static class SetupVersion {
-  public const string App="preview29";
-  public const string Phoenix="2026.11.24-preview27";
+  public const string App="preview30";
+  public const string Phoenix="2026.11.26-preview30";
  }
  public static class TimeZones {
   // Windows time zone ids mapped to the IANA names the box uses. Unknown zones fall back to Sydney.
@@ -30,6 +30,10 @@ namespace PhoenixSetup {
   readonly ComboBox band=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList};
   readonly TextBox root=new TextBox{UseSystemPasswordChar=true,MaxLength=128},rootAgain=new TextBox{UseSystemPasswordChar=true,MaxLength=128},tvh=new TextBox{UseSystemPasswordChar=true,MaxLength=128},tvhAgain=new TextBox{UseSystemPasswordChar=true,MaxLength=128};
   readonly CheckBox separateTvh=new CheckBox{Text="Use a different password for Tvheadend (the TV guide and recordings web page)",AutoSize=true,MaximumSize=new Size(590,0),Margin=new Padding(3,10,3,4)};
+  // Optional Wi-Fi: saved on the DVR for phoenix-wifi. Ethernet is still used whenever it is plugged in.
+  readonly CheckBox useWifi=new CheckBox{Text="Set up Wi-Fi (the DVR still uses Ethernet whenever its cable is plugged in)",AutoSize=true,MaximumSize=new Size(590,0),Margin=new Padding(3,10,3,4)};
+  readonly TextBox wifiName=new TextBox{MaxLength=32},wifiPassword=new TextBox{UseSystemPasswordChar=true,MaxLength=64};
+  readonly CheckBox showWifiPassword=new CheckBox{Text="Show password",AutoSize=true};
   readonly bool simple;
   public string Result;
   public ConfigDialog(string review,bool simpleView){
@@ -42,16 +46,35 @@ namespace PhoenixSetup {
     panel.Controls.Add(separateTvh,0,panel.RowCount++);panel.SetColumnSpan(separateTvh,2);panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     var tvhRows=new[]{Add(panel,"Tvheadend password",tvh),Add(panel,"Type it again",tvhAgain)};
     Action showTvh=()=>{foreach(var l in tvhRows)l.Visible=separateTvh.Checked;tvh.Visible=tvhAgain.Visible=separateTvh.Checked;Height=separateTvh.Checked?580:500;};
-    separateTvh.CheckedChanged+=(s,e)=>showTvh();showTvh();
+    separateTvh.CheckedChanged+=(s,e)=>showTvh();
+    AddWifi(panel);
+    Action resize=()=>{Height=500+(separateTvh.Checked?80:0)+(useWifi.Checked?120:0);};
+    separateTvh.CheckedChanged+=(s,e)=>resize();useWifi.CheckedChanged+=(s,e)=>resize();showTvh();resize();
     var note=new Label{Text="You'll need this password to update the DVR later. Write it down somewhere safe.\nTime zone: "+TimeZones.Friendly(timezone.Text)+" (same as this computer).",AutoSize=true,MaximumSize=new Size(590,0),BackColor=Theme.NoteBg,Padding=new Padding(10),Margin=new Padding(3,12,3,12)};panel.Controls.Add(note,0,panel.RowCount++);panel.SetColumnSpan(note,2);panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
    }else{
     Add(panel,"Target",new Label{Text=review,AutoSize=true,MaximumSize=new Size(350,0)});Add(panel,"Hostname",hostname);Add(panel,"Timezone",timezone);Add(panel,"Band plan",band);
     Add(panel,"Root password",root);Add(panel,"Confirm root password",rootAgain);Add(panel,"Tvheadend password",tvh);Add(panel,"Confirm TVH password",tvhAgain);
+    AddWifi(panel);useWifi.CheckedChanged+=(s,e)=>{Height=520+(useWifi.Checked?120:0);};
    }
    var go=new Button{Text=simple?"Continue setup":"Install on this HDD",AutoSize=true,Tag=Theme.Primary};go.Click+=(s,e)=>Submit();Add(panel,"",go);go.Dock=DockStyle.Right;go.Height=38;AcceptButton=go;
    Theme.Apply(this);
   }
   public void ShowSeparateTvh(){separateTvh.Checked=true;}
+  public void ShowWifi(){useWifi.Checked=true;wifiName.Text="Home network";wifiPassword.Text="example-only";}
+  void AddWifi(TableLayoutPanel panel){
+   panel.Controls.Add(useWifi,0,panel.RowCount++);panel.SetColumnSpan(useWifi,2);panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+   var rows=new[]{Add(panel,"Wi-Fi network name",wifiName),Add(panel,"Wi-Fi password",wifiPassword),Add(panel,"",showWifiPassword)};
+   showWifiPassword.CheckedChanged+=(s,e)=>wifiPassword.UseSystemPasswordChar=!showWifiPassword.Checked;
+   Action show=()=>{foreach(var l in rows)l.Visible=useWifi.Checked;wifiName.Visible=wifiPassword.Visible=showWifiPassword.Visible=useWifi.Checked;};
+   useWifi.CheckedChanged+=(s,e)=>show();show();
+  }
+  public static string CheckWifi(string name,string password){
+   // The same rules the DVR applies (phoenix-wifi): 1-32 byte name; WPA2 passphrase of 8-63
+   // characters or 64 hex digits; an empty password means an open network.
+   if(String.IsNullOrEmpty(name)||Encoding.UTF8.GetByteCount(name)>32||Regex.IsMatch(name,@"[\x00-\x1f\x7f]"))return "Enter the Wi-Fi network name exactly as it appears on your phone or PC (up to 32 characters).";
+   if(password.Length>0&&(Regex.IsMatch(password,@"[\x00-\x1f\x7f]")||!(password.Length>=8&&password.Length<=63||Regex.IsMatch(password,@"^[0-9A-Fa-f]{64}$"))))return "The Wi-Fi password must be 8 to 63 characters. Leave it empty only for an open network.";
+   return null;
+  }
   static Label Add(TableLayoutPanel panel,string name,Control c){int row=panel.RowCount++;panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));var l=new Label{Text=name,AutoSize=true,Margin=new Padding(0,9,5,9)};c.Dock=DockStyle.Fill;c.Margin=new Padding(3,5,3,5);panel.Controls.Add(l,0,row);panel.Controls.Add(c,1,row);return l;}
   void Submit(){
    try {
@@ -59,7 +82,8 @@ namespace PhoenixSetup {
     if(simple&&!separateTvh.Checked){tvh.Text=root.Text;tvhAgain.Text=rootAgain.Text;}
     foreach(string value in new[]{root.Text,tvh.Text})if(String.IsNullOrEmpty(value)||Regex.IsMatch(value,@"[\x00-\x1f\x7f]"))throw new Exception(simple?"Choose a password.":"Passwords must be nonempty and contain no control characters.");
     if(root.Text!=rootAgain.Text||tvh.Text!=tvhAgain.Text)throw new Exception(simple?"The two passwords don't match. Type them again.":"The password confirmations do not match.");
-    Result=Json.Write(new{hostname=hostname.Text,timezone=timezone.Text,band_plan=Convert.ToString(band.SelectedItem),root_password=root.Text,tvh_password=tvh.Text,utc_seconds=(long)(DateTime.UtcNow-new DateTime(1970,1,1)).TotalSeconds});root.Clear();rootAgain.Clear();tvh.Clear();tvhAgain.Clear();DialogResult=DialogResult.OK;Close();
+    if(useWifi.Checked){string problem=CheckWifi(wifiName.Text,wifiPassword.Text);if(problem!=null)throw new Exception(problem);}
+    Result=Json.Write(new{hostname=hostname.Text,timezone=timezone.Text,band_plan=Convert.ToString(band.SelectedItem),root_password=root.Text,tvh_password=tvh.Text,wifi_ssid=useWifi.Checked?wifiName.Text:"",wifi_password=useWifi.Checked?wifiPassword.Text:"",utc_seconds=(long)(DateTime.UtcNow-new DateTime(1970,1,1)).TotalSeconds});root.Clear();rootAgain.Clear();tvh.Clear();tvhAgain.Clear();wifiPassword.Clear();DialogResult=DialogResult.OK;Close();
    }catch(Exception e){MessageBox.Show(this,e.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);}
   }
  }
@@ -84,8 +108,9 @@ namespace PhoenixSetup {
   readonly Label supported=new Label{Text="✓  Your DVR is supported",ForeColor=Theme.Ok,Font=new Font("Segoe UI Semibold",12),AutoSize=true,Visible=false},installHint=new Label{Text="",AutoSize=true,Visible=false};
   readonly Label review=new Label{AutoSize=true,MaximumSize=new Size(820,0),ForeColor=Theme.Muted},finish=new Label{AutoSize=true,MaximumSize=new Size(820,0),ForeColor=Theme.Muted};
   readonly Label friendly=new Label{AutoSize=true,MaximumSize=new Size(820,0),Font=new Font("Segoe UI",10.5f)};
-  readonly CheckBox advanced=new CheckBox{Text="Use a serial adapter (UART / BOLT) instead of Ethernet",AutoSize=true},directCable=new CheckBox{Text="The DVR is connected directly to the selected PC Ethernet port",AutoSize=true},sequenceEntered=new CheckBox{Text="I entered the remote sequence and the DVR rebooted",AutoSize=true},fullSearch=new CheckBox{Text="Use full-range discovery (slower fallback)",AutoSize=true};
+  readonly CheckBox advanced=new CheckBox{Text="Use a serial adapter (UART / BOLT) instead of Ethernet",AutoSize=true},directCable=new CheckBox{Text="The DVR is connected to the selected network connection (directly, or through the same router)",AutoSize=true},sequenceEntered=new CheckBox{Text="I entered the remote sequence and the DVR rebooted",AutoSize=true},fullSearch=new CheckBox{Text="Use full-range discovery (slower fallback)",AutoSize=true};
   readonly ComboBox ethernetAdapters=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=560};
+  readonly CheckBox knownAddress=new CheckBox{Text="I know the DVR's setup address (skip the search):",AutoSize=true,Margin=new Padding(3,6,3,3)};readonly TextBox knownAddressText=new TextBox{Width=160};
   readonly Button findBox=new Button{Text="I've pressed the buttons, find my DVR",AutoSize=true,Tag=Theme.Primary};
   readonly Button reconnectAlpine=new Button{Text="Reconnect to temporary Alpine…",AutoSize=true},restoreAlpineSsh=new Button{Text="Restore temporary Alpine SSH access…",AutoSize=true};
   string keySession;
@@ -225,7 +250,7 @@ namespace PhoenixSetup {
    Add(pConnect,Lead("Do these in order."));
    Add(pConnect,Item(1,"Turn the DVR off at the wall","Plug it into your TV with HDMI so you can see it start. The aerial can wait until the end."));
    Add(pConnect,Item(2,"Put the USB stick in the rear USB port","Use the USB port on the back of the DVR, not the one on the front."));
-   Add(pConnect,Item(3,"Plug the network cable from the DVR into this computer","Straight in, not through your router. You'll move it to the router at the end."));
+   Add(pConnect,Item(3,"Plug the network cable from the DVR into this computer","Straight in works best. You'll move it to the router at the end. If this computer only has Wi-Fi, plug the DVR into the router this computer's Wi-Fi uses instead."));
    Add(pConnect,Item(4,"Turn the DVR back on","Wait until the TV shows the DVR's normal welcome screen, then press Next."));
   }
   void BuildFind(){
@@ -237,13 +262,15 @@ namespace PhoenixSetup {
    Add(networkPanel,Keys());
    Add(networkPanel,Note("Using the small remote? Each time you press 123 to switch between arrows and numbers, cover the front of the remote with your hand so the DVR doesn't see that press.\nThe TV may go blank afterwards. That's normal."));
    Add(networkPanel,Note("Your DVR restarts after the last button. Wait at least 2 minutes after it restarts before you press the button below."));
-   var adapterLabel=new Label{Text="Which network port is the cable plugged into?",AutoSize=true,Font=new Font("Segoe UI Semibold",10),Margin=new Padding(3,10,3,0)};
+   var adapterLabel=new Label{Text="How is this computer connected to the DVR?",AutoSize=true,Font=new Font("Segoe UI Semibold",10),Margin=new Padding(3,10,3,0)};
    var adapterPanel=new FlowLayoutPanel{FlowDirection=FlowDirection.TopDown,AutoSize=true,WrapContents=false};adapterPanel.Controls.Add(adapterLabel);adapterPanel.Controls.Add(ethernetAdapters);adapterRow=adapterPanel;Add(networkPanel,adapterPanel);
-   var refreshNetwork=new Button{Text="Refresh Ethernet ports",AutoSize=true};refreshNetwork.Click+=(s,e)=>{RefreshEthernet();ApplyView();};
+   var refreshNetwork=new Button{Text="Refresh network connections",AutoSize=true};refreshNetwork.Click+=(s,e)=>{RefreshEthernet();ApplyView();};
    var npcap=new Button{Text="Install the network helper (Npcap)…",AutoSize=true};npcap.Click+=(s,e)=>Process.Start("https://npcap.com/#download");
    npcapRow=Row(new Label{Text="This computer needs the free Npcap network helper to find the DVR.",AutoSize=true,Margin=new Padding(3,8,8,3)},npcap);Add(networkPanel,npcapRow);
    Add(networkPanel,findBox);
    Add(networkPanel,AdvHeading("Discovery"));Add(networkPanel,Adv(Row(refreshNetwork)));Add(networkPanel,Adv(directCable));Add(networkPanel,Adv(sequenceEntered));Add(networkPanel,Adv(fullSearch));
+   Add(networkPanel,Adv(Row(knownAddress,knownAddressText)));Add(networkPanel,Adv(Note("The setup address starts with 10. Setup shows it when it finds the DVR, and keeps the last one here. With a typed address there's no search, so it's the quickest way over Wi-Fi.")));
+   knownAddressText.Text=LastFoundAddress()??"";knownAddressText.TextChanged+=(s,e)=>{if(knownAddressText.Focused&&knownAddressText.Text.Trim().Length>0)knownAddress.Checked=true;};
    var uart=new FlowLayoutPanel{FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoSize=true,Visible=false};Add(pFind,uart);
    Add(uart,Heading("Connect with a serial adapter"));
    Add(uart,Body("Safely eject the prepared USB and insert it in the rear USB port. Connect Ethernet. With the DVR powered off, connect a 3.3 V TTL UART adapter: GND/TX/RX only, TX and RX crossed. Leave VCC, DTR and RTS disconnected. Close other terminal apps."));Add(uart,ports);var refreshPorts=new Button{Text="Refresh COM ports",AutoSize=true};refreshPorts.Click+=(s,e)=>RefreshPorts();Add(uart,Row(refreshPorts,verify));Add(uart,Body("Adapter verification checks Windows access only. Device communication is confirmed when readable boot output is received."));Add(uart,off);Add(uart,capture);
@@ -268,7 +295,7 @@ namespace PhoenixSetup {
    steps.Controls.Add(Lead("A few last things and you're watching TV."));
    steps.Controls.Add(Item(1,"Leave the USB stick in the DVR","It's the key that starts Phoenix. If you take it out, the DVR goes back to its old software."));
    steps.Controls.Add(Item(2,"Turn the DVR off","Switch it off at the wall."));
-   steps.Controls.Add(Item(3,"Move the network cable to your home router","Unplug it from this computer and plug it into your router."));
+   steps.Controls.Add(Item(3,"Move the network cable to your home router","Unplug it from this computer and plug it into your router. Skip this if it's already plugged into the router."));
    steps.Controls.Add(Item(4,"Plug in the TV and aerial","Make sure it's plugged into your TV, and plug the aerial into the DVR."));
    steps.Controls.Add(Item(5,"Turn the DVR on and finish on the TV","The Phoenix welcome screen appears. Use the remote to scan for your channels."));
    foreach(Control c in steps.Controls)c.Margin=new Padding(3,5,3,7);
@@ -452,6 +479,15 @@ namespace PhoenixSetup {
    else try{foreach(var adapter in EthernetAdapter.List())ethernetAdapters.Items.Add(adapter);}catch(Exception error){Append("Ethernet ports: "+error.Message+"\r\n");}
    if(ethernetAdapters.Items.Count>0)ethernetAdapters.SelectedIndex=0;
   }
+  static string LastFoundAddress(){
+   // The newest discovery.json from an earlier search, so a retry can skip the search.
+   try{
+    string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Phoenix","SetupLogs"),latest=null;
+    if(!Directory.Exists(root))return null;
+    foreach(string folder in Directory.GetDirectories(root))foreach(string search in Directory.GetDirectories(folder,"ethernet-discovery-*")){string path=Path.Combine(search,"discovery.json");if(File.Exists(path)&&(latest==null||File.GetLastWriteTimeUtc(path)>File.GetLastWriteTimeUtc(latest)))latest=path;}
+    if(latest==null)return null;var box=Json.Read<DiscoveredBox>(File.ReadAllText(latest));FactoryAddress.Parse(box.Address);return box.Address;
+   }catch(Exception){return null;}
+  }
   static string LatestSaved(string filename){
    string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Phoenix","SetupLogs"),latest=null;
    if(Directory.Exists(root))foreach(string folder in Directory.GetDirectories(root)){
@@ -490,13 +526,19 @@ namespace PhoenixSetup {
   }
   void FindEthernet(){
    keySession=null;maintenancePublicKey=null;
-   if(!directCable.Checked||!sequenceEntered.Checked){Status("Confirm the direct cable and remote-sequence reboot first.");return;}
-   var adapter=ethernetAdapters.SelectedItem as EthernetAdapter;if(adapter==null){Status("This computer has no network port that Setup can use. Plug the cable in, then press Find again.");return;}
+   if(!directCable.Checked||!sequenceEntered.Checked){Status("Confirm the network connection and remote-sequence reboot first.");return;}
+   var adapter=ethernetAdapters.SelectedItem as EthernetAdapter;if(adapter==null){Status("This computer has no network connection that Setup can use. Plug the cable in, then press Find again.");return;}
    if(demo){device=new DeviceReview{Identity="BCM97252SSV / M616T",Kernel="0",Rootfs="0",StartupAbsent=true};supported.Visible=installHint.Visible=true;friendly.Text=FriendlyReview;review.Text="Demo supported factory device found. No device was changed.";Go(pInstall);install.Enabled=true;return;}
-   bool full=fullSearch.Checked;
+   bool full=fullSearch.Checked;uint typed=0;
+   if(knownAddress.Checked&&!Simple){try{typed=FactoryAddress.Parse(knownAddressText.Text);}catch(FormatException error){Status(error.Message);knownAddressText.Focus();return;}}
    Run(async token=>{
     device=null;supported.Visible=installHint.Visible=false;review.Text=friendly.Text="";if(ethernet!=null){ethernet.Dispose();ethernet=null;}
-    var found=await Task.Run(()=>{Status(full?"Preparing full-range discovery":"Looking for your DVR…");var candidates=full?new List<uint>():FactoryCandidates.Generate(token);using(var search=new NpcapDiscovery(adapter))return search.Search(adapter,candidates,full,token,Status,Path.Combine(session,"ethernet-discovery-"+DateTime.Now.ToString("HHmmss-fff")));});
+    if(adapter.Wireless)Append("Searching over Wi-Fi ("+adapter.Name+"). This works only when the DVR is plugged into the same router, not a guest network.\r\n");
+    string folder=Path.Combine(session,"ethernet-discovery-"+DateTime.Now.ToString("HHmmss-fff"));
+    var found=await Task.Run(()=>{
+     if(typed!=0){using(var probe=new NpcapDiscovery(adapter))return probe.Probe(adapter,typed,token,Status,folder);}
+     Status(full?"Preparing full-range discovery":adapter.Wireless?"Looking for your DVR over Wi-Fi. This can take about 10 minutes…":"Looking for your DVR…");var candidates=full?new List<uint>():FactoryCandidates.Generate(token);using(var search=new NpcapDiscovery(adapter))return search.Search(adapter,candidates,full,token,Status,folder);});
+    knownAddressText.Text=found.Address;Append("DVR setup address: "+found.Address+"\r\n");
     Status("Found the DVR at "+found.Address+". Checking it…");
     ethernet=new EthernetInstallLink(adapter,found,Path.Combine(session,"ethernet-device"),Status,token);device=await Task.Run(()=>ethernet.Inspect());
     supported.Visible=installHint.Visible=true;friendly.Text=FriendlyReview;review.Text="Supported M616T factory device at "+found.Address+". Selected kernel "+device.Kernel+", root "+device.Rootfs+".\nThe original boot environment is saved in your installation logs. No HDD files have been changed.\nInstallation will preserve these slots, verify RUNLEVEL=1 for stock fallback, configure USB boot and review the HDD before asking for passwords.";Go(pInstall);Status("Your DVR checked out. Press Install Phoenix when you're ready.");
@@ -591,7 +633,7 @@ namespace PhoenixSetup {
     if(screenshot){
      f.ShowInTaskbar=false;f.StartPosition=FormStartPosition.Manual;f.Location=new Point(-4000,-4000);f.CreateControl();f.Show();
      string page=args[0]=="--screenshot"?"home":args[0].Substring("--screenshot-".Length);
-     if(page=="config"||page=="config-tvh"){f.Close();using(var d=new ConfigDialog("120 GB free on the recordings disk",true)){d.StartPosition=FormStartPosition.Manual;d.Location=new Point(-4000,-4000);d.ShowInTaskbar=false;if(page=="config-tvh")d.ShowSeparateTvh();d.Show();Application.DoEvents();using(var image=new Bitmap(d.Width,d.Height)){d.DrawToBitmap(image,new Rectangle(0,0,image.Width,image.Height));image.Save(args[1]);}d.Close();}return 0;}
+     if(page=="config"||page=="config-tvh"||page=="config-wifi"){f.Close();using(var d=new ConfigDialog("120 GB free on the recordings disk",true)){d.StartPosition=FormStartPosition.Manual;d.Location=new Point(-4000,-4000);d.ShowInTaskbar=false;if(page=="config-tvh")d.ShowSeparateTvh();if(page=="config-wifi")d.ShowWifi();d.Show();Application.DoEvents();using(var image=new Bitmap(d.Width,d.Height)){d.DrawToBitmap(image,new Rectangle(0,0,image.Width,image.Height));image.Save(args[1]);}d.Close();}return 0;}
      if(page=="update-done"){f.Close();using(var d=new UpdateDoneDialog(SetupVersion.Phoenix)){d.StartPosition=FormStartPosition.Manual;d.Location=new Point(-4000,-4000);d.ShowInTaskbar=false;d.Show();Application.DoEvents();using(var image=new Bitmap(d.Width,d.Height)){d.DrawToBitmap(image,new Rectangle(0,0,image.Width,image.Height));image.Save(args[1]);}d.Close();}return 0;}
      if(Array.IndexOf(args,"--advanced")>=0)f.PreviewAdvanced(true);
      if(!f.Preview(page))return 2;

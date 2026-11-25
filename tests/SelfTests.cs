@@ -18,6 +18,11 @@ namespace PhoenixSetup {
   static void Reject(Action action){try{action();}catch(InvalidDataException){return;}catch(IOException){return;}throw new Exception("Unsafe operation was accepted");}
   public static int Run(){
    UpdateTests.Run(Test,Assert);
+   Test("Wi-Fi details follow the DVR's rules",()=>{
+    Assert(ConfigDialog.CheckWifi("Home Net","pa ss word")==null);Assert(ConfigDialog.CheckWifi("Cafe","")==null);Assert(ConfigDialog.CheckWifi("Home",new string('a',64))==null);
+    Assert(ConfigDialog.CheckWifi("","12345678")!=null);Assert(ConfigDialog.CheckWifi(new string('x',33),"12345678")!=null);Assert(ConfigDialog.CheckWifi("Home","short")!=null);
+    Assert(ConfigDialog.CheckWifi("Home",new string((char)97,63)+"z")!=null);Assert(ConfigDialog.CheckWifi("Home",new string('g',64))!=null);Assert(ConfigDialog.CheckWifi("Ho\nme","12345678")!=null);
+   });
    Test("Only an explicit configuration repair allows credentials to be resubmitted",()=>{
     string folder=Path.Combine(Path.GetTempPath(),"phoenix-config-retry-"+Guid.NewGuid().ToString("N"));var wire=new FakeWire();int configurations=0;
     wire.Reads.Enqueue("PHOENIX_EVENT {\"event\":\"need-policy\",\"protocol_version\":2}\nPHOENIX_EVENT {\"event\":\"need-config\",\"echo_disabled\":true}\nPHOENIX_EVENT {\"event\":\"need-retry\",\"protocol_version\":1,\"retry_id\":\"aaaaaaaaaaaaaaaa\",\"code\":\"configuration\",\"message\":\"Correct timezone\"}\nPHOENIX_EVENT {\"event\":\"need-config\",\"echo_disabled\":true}\nPHOENIX_EVENT {\"event\":\"complete\"}\n");
@@ -51,7 +56,26 @@ namespace PhoenixSetup {
    Test("Temporary address duplicate and timeout are explicit",()=>{Reject(()=>AddressReadiness.Wait(()=>"Duplicate",()=>{throw new Exception("Must not bind duplicate");},System.Threading.CancellationToken.None));long elapsed=0;bool timedOut=false;try{AddressReadiness.Wait(()=>"Tentative",()=>{throw new Exception("Must not bind tentative");},System.Threading.CancellationToken.None,500,()=>elapsed+=100,()=>elapsed);}catch(TimeoutException e){timedOut=e.Message.Contains("Tentative");}Assert(timedOut);});
    Test("Temporary address readiness is cancellable",()=>{var source=new System.Threading.CancellationTokenSource();source.Cancel();bool stopped=false;try{AddressReadiness.Wait(()=>"Preferred",()=>{throw new Exception("Cancelled readiness must not bind");},source.Token);}catch(OperationCanceledException){stopped=true;}finally{source.Dispose();}Assert(stopped);});
    Test("Factory PRNG reference outputs",()=>{var values=FactoryCandidates.Vector(1);Assert(values[0]==1804289383&&values[1]==846930886&&values[2]==1681692777);});
-   Test("All microsecond seeds produce the validated candidate set",()=>{var values=FactoryCandidates.Generate(System.Threading.CancellationToken.None);Assert(values.Count==970291);uint previous=0;foreach(uint value in values){Assert(value>previous&&(value>>24)==10&&(value&255)>0&&(value&255)<254);previous=value;}});
+   Test("All microsecond seeds produce the validated candidate set",()=>{var values=FactoryCandidates.Generate(System.Threading.CancellationToken.None);Assert(values.Count==970291);uint previous=0;foreach(uint value in values){Assert(value>previous&&FactoryAddress.IsAllowed(value));previous=value;}});
+   Test("Typed factory setup address",()=>{Assert(FactoryAddress.Parse("10.12.34.56")==0x0a0c2238u);Assert(FactoryAddress.Parse(" 10.0.1.1 ")==0x0a000101u);foreach(string bad in new[]{"","10.0.0.5","10.1.2.0","10.1.2.254","10.254.1.1","192.168.1.20","10.1.2","10.01.2.3","fe80::1"}){bool refused=false;try{FactoryAddress.Parse(bad);}catch(FormatException){refused=true;}Assert(refused);}});
+   Test("Wi-Fi adapters are labelled as going through the router",()=>{Assert(new EthernetAdapter{Name="Wi-Fi",Description="Intel",Wireless=true}.ToString().StartsWith("Wi-Fi, through your router: "));Assert(new EthernetAdapter{Name="Ethernet",Description="Realtek"}.ToString()=="Ethernet — Realtek");});
+   Test("Full scan probes only the factory range",()=>{
+    Assert(FactoryAddress.FullRangeCount==16322295&&FactoryAddress.FullRangeAddress(0)==0x0a000101u);
+    Assert(FactoryAddress.FullRangeAddress(253*253)==0x0a010001u);
+    uint previous=0;for(int i=0;i<FactoryAddress.FullRangeCount;i++){uint address=FactoryAddress.FullRangeAddress(i);Assert(FactoryAddress.IsAllowed(address)&&address>previous);previous=address;}
+    Assert(previous==0x0afdfdfdu);
+    foreach(int bad in new[]{-1,FactoryAddress.FullRangeCount}){bool refused=false;try{FactoryAddress.FullRangeAddress(bad);}catch(ArgumentOutOfRangeException){refused=true;}Assert(refused);}
+   });
+   Test("ARP ignores PC and other invalid factory replies",()=>{
+    byte[] local={2,0,0,0,0,1},remote={2,0,0,0,0,2};var packet=ArpPackets.Request(local,0x0a010203u);
+    Array.Copy(local,0,packet,0,6);Array.Copy(remote,0,packet,6,6);Array.Copy(remote,0,packet,22,6);Array.Copy(local,0,packet,32,6);packet[21]=2;packet[38]=169;packet[39]=254;packet[40]=254;packet[41]=1;
+    foreach(uint bad in new uint[]{0xc0a80126u,0xa9fefe01u,0x0a000005u,0x0a010200u,0x0a0102feu,0x0a01fe01u,0x0afe0101u,0x0b010203u}){
+     for(int j=0;j<4;j++)packet[28+j]=(byte)(bad>>(24-8*j));Assert(ArpPackets.Reply(packet,local)==null);
+     bool refused=false;try{ArpPackets.Request(local,bad);}catch(ArgumentOutOfRangeException){refused=true;}Assert(refused);
+    }
+    packet[28]=10;packet[29]=1;packet[30]=2;packet[31]=3;Assert(ArpPackets.Reply(packet,local)!=null);
+    Array.Copy(local,0,packet,6,6);Array.Copy(local,0,packet,22,6);Assert(ArpPackets.Reply(packet,local)==null);
+   });
    Test("Raw ARP request and matched reply",()=>{byte[] local={2,0,0,0,0,1},remote={2,0,0,0,0,2};var packet=ArpPackets.Request(local,0x0a010203);Assert(packet.Length==60&&packet[38]==10&&packet[39]==1&&packet[40]==2&&packet[41]==3);Assert(ArpPackets.Reply(packet,local)==null);Array.Copy(local,0,packet,0,6);Array.Copy(remote,0,packet,6,6);packet[21]=2;Array.Copy(remote,0,packet,22,6);packet[28]=10;packet[29]=1;packet[30]=2;packet[31]=3;Array.Copy(local,0,packet,32,6);packet[38]=169;packet[39]=254;packet[40]=254;packet[41]=1;var box=ArpPackets.Reply(packet,local);Assert(box!=null&&box.Address=="10.1.2.3");packet[32]^=1;Assert(ArpPackets.Reply(packet,local)==null);});
    Test("Octal transport rejects malformed bytes",()=>{Assert(NvramMap.Octal("0000000 000 377 012\n0000003\n")[1]==255);Reject(()=>NvramMap.Octal("0000000 999"));});
    Test("NVRAM checksum and record preservation",()=>{byte[] data=new byte[2560];byte[] record=Encoding.ASCII.GetBytes("RUNLEVEL=4");data[160]=1;data[161]=(byte)(record.Length+1);data[162]=7;Array.Copy(record,0,data,163,record.Length);uint size=(uint)(record.Length+4),sum=0;for(int i=160;i<160+size;i++)sum+=data[i];Array.Copy(BitConverter.GetBytes(sum),0,data,0,4);Array.Copy(BitConverter.GetBytes(~sum),0,data,4,4);Array.Copy(BitConverter.GetBytes(size),0,data,8,4);var map=NvramMap.Parse(data);var copy=map.Copy();copy.Set("RUNLEVEL","1");Assert(map.Get("RUNLEVEL")=="4"&&copy.Records["RUNLEVEL"].Flags==7&&!copy.Same(map));data[163+record.Length-1]=128;sum=0;for(int i=160;i<160+size;i++)sum+=data[i];Array.Copy(BitConverter.GetBytes(sum),0,data,0,4);Array.Copy(BitConverter.GetBytes(~sum),0,data,4,4);var high= NvramMap.Parse(data);data[163+record.Length-1]=129;sum++;Array.Copy(BitConverter.GetBytes(sum),0,data,0,4);Array.Copy(BitConverter.GetBytes(~sum),0,data,4,4);Assert(!high.Same(NvramMap.Parse(data)));data[164]^=1;Reject(()=>NvramMap.Parse(data));});
