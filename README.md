@@ -1,5 +1,10 @@
 # Phoenix DVR
 
+Note: This is based on a number of existing projects but is otherwise the work of AI.
+It has been tested on a small number of devices, but the full list of devices it will run on is not known.
+There is a risk this will not run on your specific device, or the install process could render it inoperable.
+proceed at your own risk.
+
 Phoenix turns a set-top box with a built-in hard drive back into a working TV
 recorder. Plug in an antenna, and you get live TV you can pause, a programme
 guide, and recordings you can watch, skip through and pick up where you left off.
